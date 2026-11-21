@@ -17,3 +17,8 @@ mbed-os/
 .mbed
 mbed_settings.py
 *.bin
+
+# Course example zips over GitHub's 100 MB limit
+course_materials/txCmdFRTOS.zip
+course_materials/tstLM75B.zip
+course_materials/tstRTC.zip
