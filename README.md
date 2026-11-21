@@ -7,7 +7,7 @@ Members: Simão Silva (110486), Simão Silveira (110049), Isam Abbasi (122334)
 
 Deadline: 18/12/2026. Deliver a ZIP with the sources, the final binary `frtos.bin` and a 3-4 page report on the real-time and communication/synchronization decisions. Demos and oral exams for both parts are in the week of 04/01/2027.
 
-The spec is `course_materials/Project_part2.pdf`. Where this README and the spec disagree, the spec wins.
+The spec is `materials/Project_part2.pdf`. Where this README and the spec disagree, the spec wins.
 
 
 ## What the device does
@@ -75,7 +75,7 @@ Ranges: day 1-31, month 1-12, year 1970-2037, h 0-23, m and s 0-59, tl and th 0-
 - `main.cpp`: two FreeRTOS tasks passing an `int32_t` through a queue, and the serial port set to 115200 baud. `vTask1` calls `monitor()`, which never returns, so that task is the console.
 - `monitor.cpp`: the command interpreter (Carlos Almeida, IST). Commands live in the `commands[]` table as `{function, name, help}`. `sos` prints the help.
 - `comando.cpp`: the command handlers (`cmd_test`, `cmd_send`, ...). Our commands go here.
-- `freertos-cm3/`: FreeRTOS V9.0.0 for Cortex-M3. The manuals in `course_materials/` describe V10, so a few newer API calls won't be there.
+- `freertos-cm3/`: FreeRTOS V9.0.0 for Cortex-M3. The manuals in `materials/` describe V10, so a few newer API calls won't be there.
 
 The settings in `FreeRTOSConfig.h` that matter most:
 
@@ -127,7 +127,7 @@ Serial console: 115200 baud, local echo on, CR added to every LF. On Linux the b
 ## Repository layout
 
 ```
-course_materials/   spec, FreeRTOS manuals, lab notes and course examples
+materials/          spec, FreeRTOS manuals, lab notes and course examples
 ```
 
 Source code will go in its own folder, built from `txCmdFRTOS`.
