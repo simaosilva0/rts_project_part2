@@ -105,7 +105,9 @@ The examples are built against the old mbed 2 library (`mbed.bld` points at `mbe
 
 The LM75B and the MMA7660 share the I2C bus on p28/p27.
 
-`txCmdFRTOS.zip`, `tstLM75B.zip` and `tstRTC.zip` are about 106 MB each because they bundle the whole mbed library. They're over GitHub's 100 MB limit, so they're gitignored. Get them from the course page.
+### Not in this repo: txCmdFRTOS.zip, tstLM75B.zip, tstRTC.zip
+
+These three zips are deliberately left out of the repo (see `.gitignore`). Each is about 106 MB because it bundles the whole mbed library, which is over GitHub's 100 MB file limit. Download them from the course page and put them in `materials/`.
 
 
 ## Building and flashing
