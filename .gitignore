@@ -1,0 +1,19 @@
+# MPLAB X build output and per-user settings
+**/build/
+**/dist/
+**/debug/
+**/nbproject/private/
+**/nbproject/Makefile-*.mk
+**/nbproject/Makefile-genesis.properties
+*.o
+*.elf
+*.hex
+*.map
+mcc-manifest-autosave.yml
+
+# Mbed CLI 1 build output
+BUILD/
+mbed-os/
+.mbed
+mbed_settings.py
+*.bin
