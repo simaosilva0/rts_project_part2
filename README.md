@@ -108,6 +108,37 @@ The parts start once the foundation builds, shows the clock on the LCD and answe
 - Hit Bit task: rotates the pattern on LED1-4, wakes on a joystick-centre interrupt (semaphore or task notification), handles hits and misses, and blinks all 4 LEDs 3 times on a win.
 - Suspend/resume for `adbl` and `adhb`, clearing the LEDs and the bubble area of the LCD when a task is turned off.
 
+### Starting your part
+
+The foundation is done: every task exists, and each part only replaces the body of its own task. `STUDY.md` explains every interface below; the section numbers point to it.
+
+**Interfaces everyone can use**
+
+| Function | What it does |
+|---|---|
+| `config_get(&c)` | copy of all parameters and task states (`shared.h`, section 5). Only the console calls `config_set`. |
+| `clock_now(&tm)` | current date and time as a `struct tm` (`clock.h`, section 8) |
+| `lcd_show_temp(tenths)`, `lcd_show_bubble(dx, dy)`, `lcd_hide_bubble()` | display updates; never block (`lcd.h`, section 9) |
+| `buzzer_alarm(ALARM_CLOCK)` / `buzzer_alarm(ALARM_TEMP)` | ask for an alarm sound; never blocks (`buzzer.h`, section 11) |
+| `i2c_lock()` / `i2c_unlock()` | around every LM75B or MMA7660 call (`i2c_bus.h`, section 11) |
+
+**Rules**
+
+- Between `i2c_lock()` and `i2c_unlock()`, only the driver call: no delay, no `lcd_show_*`, no `printf`. Unlock on every path.
+- Only the console task prints. Other tasks send results to it, or to the LCD.
+- Temperatures travel as integer tenths of a degree (235 = 23.5 °C), never as `float` in messages or `printf`.
+- Don't call `vTaskDelete`, and don't suspend another task; tasks suspend themselves (section 13).
+- New ISRs: NVIC priority 6, only `...FromISR` calls, then `portYIELD_FROM_ISR` (section 6).
+- A new console command: write the handler in `commands.cpp`, then change its row in `monitor.cpp` from `cmd_todo` to it.
+
+**Part 1 (temperature):** `temp.cpp` (`vTempTask`, priority 2) and the `rt`, `rmm`, `cmm` handlers. To design: how `rt` asks the task for a reading and gets the reply, and how the task wakes early when `mmp` changes `pmon` (section 7). `LM75B::read()` returns a `float`; convert it to tenths. RGB LED on p23/p24/p25.
+
+**Part 2 (alarms and sound):** `buzzer.cpp` (`vBuzzerTask`, priority 3) and the alarm-clock check in the `vClockTask` loop (`clock.cpp`). The queue carries an `alarm_src_t` or `REQ_MODE`; on `REQ_MODE`, re-read `cs` from the config (section 13). Buzzer on p26, pot1 on p19, pot2 on p20.
+
+**Part 3 (bubble level and Hit Bit):** `bubble.cpp` and `hitbit.cpp` (priorities 3 and 4). The on/off logic already works; replace the marked lines. Create the accelerometer active, `MMA7660 acc(p28, p27, true)`, or its reads busy-wait 12 ms while holding the bus (section 11). Joystick centre on p14, LEDs LED1-LED4.
+
+Check the pins against the mbed Application Board schematic before wiring code to them.
+
 ### Report
 
 Each person writes the section on their own part. The foundation author writes the architecture, priorities and shared-resource section.
