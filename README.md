@@ -189,51 +189,49 @@ Serial console: 115200 baud, local echo on. The board already sends `\r\n` (`frt
 
 ## Testing
 
-Flash `frtos.bin`, open the terminal (`picocom -b 115200 --echo /dev/ttyACM0`) and press the board's reset button, so the title and the `Cmd>` prompt aren't missed. Each line below lists what to type or do and what should happen. The "Board" column says whether it has been checked on real hardware; update it after every board session.
-
-Last board session: none yet.
+Flash `frtos.bin`, open the terminal (`picocom -b 115200 --echo /dev/ttyACM0`) and press the board's reset button, so the title and the `Cmd>` prompt aren't missed. Each line below lists what to type or do and what should happen.
 
 ### Console
 
-| Test | Expected | Board |
-|---|---|---|
-| reset the board | `Application Control Monitor`, `Type sos for help`, `Cmd>` | not yet |
-| `sos` | 21 commands in two aligned columns, no staircase lines | not yet |
-| `tset`, 3 backspaces, `est`, Enter | runs as `test` | not yet |
-| `test a b c` | `argv[0]` to `argv[3]` | not yet |
-| `xyz` | `Invalid command!` | not yet |
-| `rdt` (or any command not written yet) | `rdt: not implemented yet` | not yet |
+| Test | Expected |
+|---|---|
+| reset the board | `Application Control Monitor`, `Type sos for help`, `Cmd>` |
+| `sos` | 21 commands in two aligned columns, no staircase lines |
+| `tset`, 3 backspaces, `est`, Enter | runs as `test` |
+| `test a b c` | `argv[0]` to `argv[3]` |
+| `xyz` | `Invalid command!` |
+| `rt` (or any command not written yet) | `rt: not implemented yet` |
 
 ### Parameters and alarm settings
 
-| Test | Expected | Board |
-|---|---|---|
-| `rp` after reset | `pmon = 5 s, tala = 3 s` | not yet |
-| `rai` after reset | `alarm clock: 12:00:00 (off)`, `temperature: tlow = 15 C, thigh = 30 C (off)` | not yet |
-| `mmp 10`, then `rp` | `pmon = 10 s`, and `rp` shows it | not yet |
-| `mta 60`, `mta 61` | `tala = 60 s`; then `t must be a number 0..60` | not yet |
-| `sac 7 30 0`, then `rai` | `alarm clock = 07:30:00`, and `rai` shows it | not yet |
-| `sac 7 99 0`, then `rai` | `m must be a number 0..59`, alarm unchanged | not yet |
-| `sat 20 25` / `sat 30 20` | thresholds changed / `tl must be lower than th` | not yet |
-| `adac 1`, `adat 1`, then `rai` | `alarm clock on`, `temperature alarm on`, `rai` shows both `(on)` | not yet |
-| `mmp abc`, `mmp 12x`, `mmp` | `p must be a number 0..99` twice, then `usage: mmp p` | not yet |
-| `mmp 5 6` | `usage: mmp p` | not yet |
+| Test | Expected |
+|---|---|
+| `rp` after reset | `pmon = 5 s, tala = 3 s` |
+| `rai` after reset | `alarm clock: 12:00:00 (off)`, `temperature: tlow = 15 C, thigh = 30 C (off)` |
+| `mmp 10`, then `rp` | `pmon = 10 s`, and `rp` shows it |
+| `mta 60`, `mta 61` | `tala = 60 s`; then `t must be a number 0..60` |
+| `sac 7 30 0`, then `rai` | `alarm clock = 07:30:00`, and `rai` shows it |
+| `sac 7 99 0`, then `rai` | `m must be a number 0..59`, alarm unchanged |
+| `sat 20 25` / `sat 30 20` | thresholds changed / `tl must be lower than th` |
+| `adac 1`, `adat 1`, then `rai` | `alarm clock on`, `temperature alarm on`, `rai` shows both `(on)` |
+| `mmp abc`, `mmp 12x`, `mmp` | `p must be a number 0..99` twice, then `usage: mmp p` |
+| `mmp 5 6` | `usage: mmp p` |
 
 ### Clock
 
-| Test | Expected | Board |
-|---|---|---|
-| `rdt` right after power-on | `01/01/1970 00:00:..`, seconds counting | not yet |
-| `sd 24 11 2026`, `sc 16 30 0`, then `rdt` | `date = 24/11/2026`, `clock = 16:30:00`, then `24/11/2026 16:30:0x` | not yet |
-| `rc` a few times | the seconds advance | not yet |
-| `sd 31 2 2026` | `31/02/2026 does not exist` | not yet |
-| `sd 29 2 2028` / `sd 29 2 2027` | accepted (leap year) / `29/02/2027 does not exist` | not yet |
-| `sd 1 1 2038`, `sc 24 0 0` | `Y must be a number 1970..2037`, `h must be a number 0..23` | not yet |
-| press reset, then `rdt` | the time is kept: the RTC survives a reset | not yet |
+| Test | Expected |
+|---|---|
+| `rdt` right after power-on | `01/01/1970 00:00:..`, seconds counting |
+| `sd 24 11 2026`, `sc 16 30 0`, then `rdt` | `date = 24/11/2026`, `clock = 16:30:00`, then `24/11/2026 16:30:0x` |
+| `rc` a few times | the seconds advance |
+| `sd 31 2 2026` | `31/02/2026 does not exist` |
+| `sd 29 2 2028` / `sd 29 2 2027` | accepted (leap year) / `29/02/2027 does not exist` |
+| `sd 1 1 2038`, `sc 24 0 0` | `Y must be a number 1970..2037`, `h must be a number 0..23` |
+| press reset, then `rdt` | the time is kept: the RTC survives a reset |
 
 ### Still to write
 
-To be filled in as each part is implemented, from the spec:
+Tests for the parts not implemented yet, from the spec:
 
 - **Alarm clock:** sounds at `ALAH:ALAM:ALAS` when `ALAC = 1`.
 - **Temperature:** periodic reads every `pmon` s, none when `pmon = 0`; `rt` works even when `pmon = 0`; `rmm`/`cmm` with timestamps; RGB LED blue below `tlow`, red above `thigh`, graded in between; an alarm outside `[tlow, thigh]` when `ALAT = 1`.
