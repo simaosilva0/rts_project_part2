@@ -18,6 +18,10 @@ extern void cmd_sac  (int, char** );
 extern void cmd_sat  (int, char** );
 extern void cmd_adac (int, char** );
 extern void cmd_adat (int, char** );
+extern void cmd_rdt  (int, char** );
+extern void cmd_sd   (int, char** );
+extern void cmd_rc   (int, char** );
+extern void cmd_sc   (int, char** );
 extern void cmd_todo (int, char** );
 
 /*-------------------------------------------------------------------------+
@@ -33,10 +37,10 @@ struct  command_d {
 } const commands[] = {
   {cmd_sos,  "sos",  "       help"},
   {cmd_test, "test", "[args] print the arguments (parser check)"},
-  {cmd_todo, "rdt",  "       read date/time (dd/MM/YYYY hh:mm:ss)"},
-  {cmd_todo, "sd",   "d M Y  set date"},
-  {cmd_todo, "rc",   "       read clock"},
-  {cmd_todo, "sc",   "h m s  set clock"},
+  {cmd_rdt,  "rdt",  "       read date/time (dd/MM/YYYY hh:mm:ss)"},
+  {cmd_sd,   "sd",   "d M Y  set date"},
+  {cmd_rc,   "rc",   "       read clock"},
+  {cmd_sc,   "sc",   "h m s  set clock"},
   {cmd_todo, "rt",   "       read temperature"},
   {cmd_todo, "rmm",  "       read temperature max and min"},
   {cmd_todo, "cmm",  "       clear temperature max and min"},

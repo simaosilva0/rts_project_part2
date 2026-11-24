@@ -3,10 +3,11 @@
 #include "task.h"
 #include "shared.h"
 #include "console.h"
+#include "clock.h"
 
 int main(void)
 {
-    if (console_init() != pdPASS || config_init() != pdPASS) {
+    if (console_init() != pdPASS || config_init() != pdPASS || clock_init() != pdPASS) {
         printf("init failed: out of heap\n");
         for (;;);
     }

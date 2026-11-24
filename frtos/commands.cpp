@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
+
+#include "clock.h"
 #include "shared.h"
 
 /*-------------------------------------------------------------------------+
@@ -187,4 +189,70 @@ void cmd_adat (int argc, char** argv)
   config_set(&c);
 
   printf("temperature alarm %s\n", on ? "on" : "off");
+}
+
+/*-------------------------------------------------------------------------+
+| Function: cmd_rdt - read date/time
++--------------------------------------------------------------------------*/
+void cmd_rdt (int argc, char** argv)
+{
+  struct tm now;
+  char buf[20];
+
+  clock_now(&now);
+  strftime(buf, sizeof(buf), "%d/%m/%Y %H:%M:%S", &now);
+
+  printf("%s\n", buf);
+}
+
+/*-------------------------------------------------------------------------+
+| Function: cmd_rc - read clock
++--------------------------------------------------------------------------*/
+void cmd_rc (int argc, char** argv)
+{
+  struct tm now;
+  char buf[9];
+
+  clock_now(&now);
+  strftime(buf, sizeof(buf), "%H:%M:%S", &now);
+
+  printf("%s\n", buf);
+}
+
+/*-------------------------------------------------------------------------+
+| Function: cmd_sd - set date
++--------------------------------------------------------------------------*/
+void cmd_sd (int argc, char** argv)
+{
+  int d, M, Y;
+
+  if (!arg_count(argc, 3, "sd d M Y") ||
+      !arg_int(argv[1], "d", 1, 31, &d) ||
+      !arg_int(argv[2], "M", 1, 12, &M) ||
+      !arg_int(argv[3], "Y", 1970, 2037, &Y))
+    return;
+
+  if (clock_set_date(d, M, Y) != pdPASS) {
+    printf("%02d/%02d/%04d does not exist\n", d, M, Y);
+    return;
+  }
+
+  printf("date = %02d/%02d/%04d\n", d, M, Y);
+}
+
+/*-------------------------------------------------------------------------+
+| Function: cmd_sc - set clock
++--------------------------------------------------------------------------*/
+void cmd_sc (int argc, char** argv)
+{
+  int h, m, s;
+
+  if (!arg_count(argc, 3, "sc h m s") ||
+      !arg_int(argv[1], "h", 0, 23, &h) ||
+      !arg_int(argv[2], "m", 0, 59, &m) ||
+      !arg_int(argv[3], "s", 0, 59, &s))
+    return;
+  clock_set_time(h, m, s);
+
+  printf("clock = %02d:%02d:%02d\n", h, m, s);
 }

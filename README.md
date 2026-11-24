@@ -219,11 +219,23 @@ Last board session: none yet.
 | `mmp abc`, `mmp 12x`, `mmp` | `p must be a number 0..99` twice, then `usage: mmp p` | not yet |
 | `mmp 5 6` | `usage: mmp p` | not yet |
 
+### Clock
+
+| Test | Expected | Board |
+|---|---|---|
+| `rdt` right after power-on | `01/01/1970 00:00:..`, seconds counting | not yet |
+| `sd 24 11 2026`, `sc 16 30 0`, then `rdt` | `date = 24/11/2026`, `clock = 16:30:00`, then `24/11/2026 16:30:0x` | not yet |
+| `rc` a few times | the seconds advance | not yet |
+| `sd 31 2 2026` | `31/02/2026 does not exist` | not yet |
+| `sd 29 2 2028` / `sd 29 2 2027` | accepted (leap year) / `29/02/2027 does not exist` | not yet |
+| `sd 1 1 2038`, `sc 24 0 0` | `Y must be a number 1970..2037`, `h must be a number 0..23` | not yet |
+| press reset, then `rdt` | the time is kept: the RTC survives a reset | not yet |
+
 ### Still to write
 
 To be filled in as each part is implemented, from the spec:
 
-- **Clock:** `sd`/`sc` set the RTC and keep it running; `rdt`/`rc` read it in `dd/MM/YYYY hh:mm:ss`; out-of-range dates are rejected; the alarm clock sounds at `ALAH:ALAM:ALAS` when `ALAC = 1`.
+- **Alarm clock:** sounds at `ALAH:ALAM:ALAS` when `ALAC = 1`.
 - **Temperature:** periodic reads every `pmon` s, none when `pmon = 0`; `rt` works even when `pmon = 0`; `rmm`/`cmm` with timestamps; RGB LED blue below `tlow`, red above `thigh`, graded in between; an alarm outside `[tlow, thigh]` when `ALAT = 1`.
 - **Buzzer:** sounds for `tala` s on each alarm; config sound mode (`adcs 1`) changes the PWM period with pot1 and the duty cycle with pot2.
 - **LCD:** `hh:mm:ss` updating every second, `A: C T` showing which alarms are on, `T(C)= tt.t`.
@@ -241,6 +253,7 @@ frtos/              the application, built from txCmdFRTOS
   monitor.cpp         command interpreter and command table (course code)
   commands.cpp        console command handlers
   shared.cpp/.h       shared parameters and task states, behind a mutex
+  clock.cpp/.h        RTC access: read and set date/time
   mbed_app.json       mbed settings (newline conversion)
   freertos-cm3/       FreeRTOS V9.0.0 and FreeRTOSConfig.h
 materials/          spec, FreeRTOS manuals, lab notes and course examples

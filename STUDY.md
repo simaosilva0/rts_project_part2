@@ -9,6 +9,7 @@ The project's technical decisions and the reasons behind them, by topic. Updated
 5. Shared configuration and mutual exclusion
 6. Interrupt-driven console input
 7. Console commands and input validation
+8. Clock and RTC
 
 ## 1. Build environment
 
@@ -173,3 +174,31 @@ The board's USB connection also shows up on the PC as a serial port (`/dev/ttyAC
 - **Read-modify-write: `config_get` → change → `config_set`.** Safe only because the console is the single writer (section 5). The mutex is held for the two copies, never while parsing or printing.
 - **Confirmation after every change** (`pmon = 10 s`, `alarm clock = 07:30:00`). It is printed after `config_set`, so it only appears once the value is stored, and outside the mutex. Errors always say what was wrong. `%d` matches the `int` variables used here; `rp`/`rai` print the `uint8_t` fields with `%u`. `%02d`/`%02u` pad to two digits, so times print as `hh:mm:ss`.
 - **When other tasks see a change.** `config_set` only updates the struct; each task sees the new value the next time it calls `config_get`. This matters for the temperature task (Part 1): if it sleeps with `vTaskDelay(pmon)` and `pmon = 99`, `mmp 5` takes effect only after up to 99 s. It should instead wait on something the console can signal (a queue or a task notification) with `pmon` as the timeout.
+
+## 8. Clock and RTC
+
+`clock.h`/`clock.cpp` wrap the LPC1768's RTC: `clock_init()`, `clock_now(&tm)`, `clock_set_date(d, M, Y)` and `clock_set_time(h, m, s)`. The console commands `rdt`, `rc`, `sd` and `sc` use them.
+
+### Theory
+
+- **The RTC** is a separate counter in the LPC1768, driven by its own 32.768 kHz crystal. 32768 = 2^15, so fifteen divisions by 2 give exactly 1 Hz. It counts seconds in hardware, independent of the CPU, FreeRTOS and task load, and keeps running through a press of the reset button (not through a power-off: the mbed board has no battery).
+- **Why not count seconds in software.** A task that wakes every 1000 ms with `vTaskDelay` also spends time running and can be delayed by higher-priority tasks, so each "second" is slightly longer and the error accumulates (drift). The RTC does not drift with CPU load.
+- **Two representations of time:**
+  - `time_t`: seconds since 01/01/1970 00:00:00 (the Unix epoch). One number, easy to store, compare and add to.
+  - `struct tm` ("tm" = time): broken-down calendar fields `tm_sec`, `tm_min`, `tm_hour`, `tm_mday`, `tm_mon`, `tm_year`. `tm_mon` counts 0..11 and `tm_year` counts years since 1900, hence `M - 1` and `Y - 1900` in the code.
+  - `localtime_r(&t, &tm)` converts `time_t` → `struct tm`; `mktime(&tm)` converts back.
+- **Why the spec limits years to 1970..2037.** On many systems `time_t` is a signed 32-bit number, which overflows on 19/01/2038 (the Year 2038 problem). This toolchain's `time_t` is 64-bit, but the spec range stays inside the safe zone anyway.
+- **A hardware race: the torn read.** mbed's `time()` reads the RTC registers (SEC, MIN, HOUR, DOM, MONTH, YEAR) one at a time, and the RTC keeps counting meanwhile. If the time changes between two of those reads, the fields come from different moments: reading at 12:59:59 → 13:00:00 can give 13:59:59.
+- **Reentrant functions.** `localtime()` returns a pointer to one static buffer inside the C library, so two tasks calling it overwrite each other's result. `localtime_r()` (`_r` = reentrant) writes into a buffer the caller passes, on its own stack. In a multitasking program the `_r` versions are the safe ones; the course's `ctime.c` demo uses them too.
+
+### Decisions in `clock.cpp`
+
+- **Read twice, accept only matching reads** (`rtc_read_stable`). A torn read needs the time to change during a read; two consecutive reads take microseconds, and the clock cannot change twice in that time, so two equal reads are both correct.
+- **A mutex for the RTC registers as well** (`rtc_mutex`). The double read handles the clock ticking, not another task writing. mbed's `set_time()` pauses the RTC, writes the registers one by one and restarts it; a task reading in between sees new seconds with old hours, and because the clock is paused, both of its reads match. mbed's own lock around `time()`/`set_time()` is empty when no mbed RTOS is present, so the mutex is ours to add.
+- **One mutex per resource.** The RTC and the config are different resources with different mutexes, so a task reading the clock never waits for one copying the config. No code holds both at once, so they cannot deadlock.
+- **Only the hardware access is inside the mutex** (`rtc_get`, `rtc_set`). The conversions (`localtime_r`, `mktime`) run outside it, on the caller's local copy, so the critical section stays short.
+- **`sd` and `sc` are read-modify-write.** The RTC holds date and time as one value, so `sd` reads the full current `struct tm` (`clock_now`), replaces only the date fields, converts and writes back; `sc` keeps the date and replaces the time. Without the read, the untouched fields would be uninitialized stack garbage. This is safe because the console is the only task that sets the clock (single writer). `set_time()` also resets the RTC's sub-second counter, so each set loses under 1 s.
+- **Checking that a date exists.** `arg_int` checks `d` 1..31 and `M` 1..12 separately, so `sd 31 2 2026` passes it. `mktime` normalizes impossible dates (31/02/2026 becomes 03/03/2026), so if `tm_mday` or `tm_mon` changed after `mktime`, the date did not exist. `t == (time_t)-1` catches dates `mktime` cannot convert at all. One check covers 30/02, 31/04 and 29/02 in non-leap years.
+- **`strftime` for output.** Its `%` codes map to `struct tm` fields with padding and offsets built in: `%d` day, `%m` month (adds 1), `%Y` year (adds 1900), `%H:%M:%S`. The format decides which fields are printed, so `rdt` and `rc` share `clock_now` and differ only in the format. Unlike `printf`, `strftime` never writes past the buffer: if the result does not fit, it returns 0 and the buffer is undefined, so buffers are sized exactly (19 + `\0` = 20 for `dd/mm/yyyy hh:mm:ss`, 8 + `\0` = 9 for `hh:mm:ss`).
+- **On first power-up** `time()` finds the RTC disabled and starts it at 01/01/1970 00:00:00, a valid date inside the spec range. `clock_init()` calls it once so this happens before any task runs.
+- **Flash cost:** the C library's date functions add about 22 KB of code (78 KB total of the LPC1768's 512 KB).
