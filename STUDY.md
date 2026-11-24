@@ -8,6 +8,7 @@ The project's technical decisions and the reasons behind them, by topic. Updated
 4. Tasks, preemption and startup
 5. Shared configuration and mutual exclusion
 6. Interrupt-driven console input
+7. Console commands and input validation
 
 ## 1. Build environment
 
@@ -56,7 +57,6 @@ The board's USB connection also shows up on the PC as a serial port (`/dev/ttyAC
 - **`rp` (read parameters)** is run by the console itself. The spec allows commands to run "directly by the console task" or "through the interaction with specific tasks". `rp` only reads shared data, so it calls `config_get` and prints. `rt` will be different: a new temperature reading belongs to the temperature task, so the console will have to ask that task and wait for the reply.
   - Copy first, print after. The mutex is held only for the 12-byte copy inside `config_get`; the `printf` (about 2.5 ms of UART time for that line) runs outside the critical section, so a higher-priority task never waits for the UART.
   - `%u` with a `uint8_t`: in a variable-argument function like `printf`, types smaller than `int` are promoted to `int`. The values are never negative, so `%u` prints them correctly.
-- **Known issue, fixed in the next step:** `ARGVECSIZE` is 3 in `monitor.cpp`, so a line keeps at most 3 words including the command name, and `sd d M Y` and `sc h m s` need 4.
 
 ## 4. Tasks, preemption and startup
 
@@ -153,3 +153,23 @@ The board's USB connection also shows up on the PC as a serial port (`/dev/ttyAC
 - **The interrupt is enabled in `console_init()`, before the scheduler.** FreeRTOS keeps interrupts 5..31 masked from the first `xTaskCreate` until the scheduler starts (`uxCriticalNesting` starts at `0xaaaaaaaa` in `port.c`), so the ISR cannot run before the queue and the console task exist.
 - **`console_init()` runs before `config_init()`,** so the baud rate is already set if the error `printf` is needed.
 - **Output is still polled.** `printf` waits for the UART on every character (about 87 µs each), and the console task keeps the CPU while it prints. Acceptable because only the console prints; an interrupt-driven transmit buffer would remove it if it ever matters.
+
+## 7. Console commands and input validation
+
+- **`ARGVECSIZE` 3 → 4** (`monitor.cpp`). It is the maximum number of words kept from a line, including the command name. The longest commands (`sd d M Y`, `sc h m s`, `sac h m s`) have 1 name + 3 arguments; with 3, the last argument was lost. Extra words beyond 4 are ignored. `argv` is declared `[ARGVECSIZE+1]` because the parser stores one more entry after the last word.
+- **All 19 spec commands are in the table from the start.** Commands not written yet point to one shared stub, `cmd_todo`, which prints `<name>: not implemented yet` using `argv[0]`. `sos` already shows the full interface, and implementing a command means writing its handler and changing one word in its row. Each part's owner only edits their own rows, so `monitor.cpp` does not cause merge conflicts.
+- **`const char*` for the name and help strings.** In C++ a string literal is read-only (stored in flash), so a plain `char*` pointing at one claims a write permission that does not exist. The compiler warned twice per row (42 warnings with the full table); `const char*` states the truth and removes them. Four older warnings from the course code (`int` vs `unsigned` comparisons, one indentation) are harmless and left as they are.
+- **`sos` output in two aligned columns:** `printf("%-5s %s\n", ...)` pads the name to 5 characters, left-aligned, and each help string starts with its arguments padded to 7 characters.
+- **Parameter and alarm commands** (`commands.cpp`): `mmp`, `mta`, `rai`, `sac`, `sat`, `adac`, `adat`. The console runs them itself; they only read or change the shared config.
+
+### Input validation
+
+- **Never trust input.** Anything from outside (a user, a sensor, a network) can be missing, extra, not a number or out of range, and the system must keep working whatever is typed. Everything is validated at the border, before it reaches the shared config, so other tasks can trust the config without checking it again.
+- **`strtol`, not `atoi`.** `atoi("abc")` returns 0 and `atoi("12x")` returns 12, with no way to tell the input was invalid (`mmp abc` would quietly set `pmon = 0`). `strtol(s, &end, 10)` also reports where it stopped: `end == s` means no digits, `*end != '\0'` means junk after the number. Only a string read completely is accepted, then the range is checked. It returns `long`, so a huge value is caught by the range check, not wrapped around.
+- **Two helpers.** `arg_count(argc, n, usage)` checks the number of arguments and prints the usage; `arg_int(s, name, min, max, &out)` checks one argument and prints a precise message (`h must be a number 0..23`). The checks are written once and every command reads as plain logic.
+- **Short-circuit `||`.** In `!arg_count(...) || !arg_int(argv[1], ...) || ...`, C evaluates the next operand only if the previous one was false, so the checks run in order and stop at the first failure. If the argument count is wrong, `argv[2]` may not exist, and it is never read.
+- **Validate everything, then write.** `sac 10 99 0` changes nothing: all fields are checked before any is stored, so the config never holds a half-applied command.
+- **`sat` requires `tl < th`.** The spec only gives the range 0..50, but `tlow >= thigh` makes no sense, and the RGB gradient (Part 1) divides by `thigh - tlow`; equal values would divide by zero. Rejecting it at the border keeps that case out of the temperature task.
+- **Read-modify-write: `config_get` → change → `config_set`.** Safe only because the console is the single writer (section 5). The mutex is held for the two copies, never while parsing or printing.
+- **Confirmation after every change** (`pmon = 10 s`, `alarm clock = 07:30:00`). It is printed after `config_set`, so it only appears once the value is stored, and outside the mutex. Errors always say what was wrong. `%d` matches the `int` variables used here; `rp`/`rai` print the `uint8_t` fields with `%u`. `%02d`/`%02u` pad to two digits, so times print as `hh:mm:ss`.
+- **When other tasks see a change.** `config_set` only updates the struct; each task sees the new value the next time it calls `config_get`. This matters for the temperature task (Part 1): if it sleeps with `vTaskDelay(pmon)` and `pmon = 99`, `mmp 5` takes effect only after up to 99 s. It should instead wait on something the console can signal (a queue or a task notification) with `pmon` as the timeout.

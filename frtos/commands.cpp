@@ -3,6 +3,34 @@
 #include "shared.h"
 
 /*-------------------------------------------------------------------------+
+| Argument helpers
++--------------------------------------------------------------------------*/
+
+/* Check that the command got exactly n arguments; print the usage if not. */
+static int arg_count (int argc, int n, const char *usage)
+{
+  if (argc - 1 != n) {
+    printf("usage: %s\n", usage);
+    return 0;
+  }
+  return 1;
+}
+
+/* Convert s to an integer in [min, max]; print an error if it isn't one. */
+static int arg_int (const char *s, const char *name, int min, int max, int *out)
+{
+  char *end;
+  long v = strtol(s, &end, 10);
+
+  if (end == s || *end != '\0' || v < min || v > max) {
+    printf("%s must be a number %d..%d\n", name, min, max);
+    return 0;
+  }
+  *out = (int)v;
+  return 1;
+}
+
+/*-------------------------------------------------------------------------+
 | Function: cmd_test - prints its arguments (parser check)
 +--------------------------------------------------------------------------*/
 void cmd_test (int argc, char** argv)
@@ -23,4 +51,140 @@ void cmd_rp (int argc, char** argv)
 
   config_get(&c);
   printf("pmon = %u s, tala = %u s\n", c.pmon, c.tala);
+}
+
+/*-------------------------------------------------------------------------+
+| Function: cmd_todo - placeholder for commands not implemented yet
++--------------------------------------------------------------------------*/
+void cmd_todo (int argc, char** argv)
+{
+  printf("%s: not implemented yet\n", argv[0]);
+}
+
+/*-------------------------------------------------------------------------+
+| Function: cmd_mmp - modify monitoring period
++--------------------------------------------------------------------------*/
+void cmd_mmp (int argc, char** argv)
+{
+  config_t c;
+  int p;
+
+  if (!arg_count(argc, 1, "mmp p") || !arg_int(argv[1], "p", 0, 99, &p))
+    return;
+  config_get(&c);
+  c.pmon = p;
+  config_set(&c);
+
+  printf("pmon = %d s\n", p);
+}
+
+/*-------------------------------------------------------------------------+
+| Function: cmd_mta - modify alarm duration
++--------------------------------------------------------------------------*/
+void cmd_mta (int argc, char** argv)
+{
+  config_t c;
+  int t;
+
+  if (!arg_count(argc, 1, "mta t") || !arg_int(argv[1], "t", 0, 60, &t))
+    return;
+  config_get(&c);
+  c.tala = t;
+  config_set(&c);
+
+  printf("tala = %d s\n", t);
+}
+
+/*-------------------------------------------------------------------------+
+| Function: cmd_rai - read alarm info
++--------------------------------------------------------------------------*/
+void cmd_rai (int argc, char** argv)
+{
+  config_t c;
+
+  config_get(&c);
+  printf("alarm clock: %02u:%02u:%02u (%s)\n",
+         c.alah, c.alam, c.alas, c.alac ? "on" : "off");
+  printf("temperature: tlow = %u C, thigh = %u C (%s)\n",
+         c.tlow, c.thigh, c.alat ? "on" : "off");
+}
+
+/*-------------------------------------------------------------------------+
+| Function: cmd_sac - set alarm clock
++--------------------------------------------------------------------------*/
+void cmd_sac (int argc, char** argv)
+{
+  config_t c;
+  int h, m, s;
+
+  if (!arg_count(argc, 3, "sac h m s") ||
+      !arg_int(argv[1], "h", 0, 23, &h) ||
+      !arg_int(argv[2], "m", 0, 59, &m) ||
+      !arg_int(argv[3], "s", 0, 59, &s))
+    return;
+  config_get(&c);
+  c.alah = h;
+  c.alam = m;
+  c.alas = s;
+  config_set(&c);
+
+  printf("alarm clock = %02d:%02d:%02d\n", h, m, s);
+}
+
+/*-------------------------------------------------------------------------+
+| Function: cmd_sat - set temperature thresholds
++--------------------------------------------------------------------------*/
+void cmd_sat (int argc, char** argv)
+{
+  config_t c;
+  int tl, th;
+
+  if (!arg_count(argc, 2, "sat tl th") ||
+      !arg_int(argv[1], "tl", 0, 50, &tl) ||
+      !arg_int(argv[2], "th", 0, 50, &th))
+    return;
+  if (tl >= th) {
+    printf("tl must be lower than th\n");
+    return;
+  }
+  config_get(&c);
+  c.tlow = tl;
+  c.thigh = th;
+  config_set(&c);
+
+  printf("tlow = %d C, thigh = %d C\n", tl, th);
+}
+
+/*-------------------------------------------------------------------------+
+| Function: cmd_adac - alarm clock on/off
++--------------------------------------------------------------------------*/
+void cmd_adac (int argc, char** argv)
+{
+  config_t c;
+  int on;
+
+  if (!arg_count(argc, 1, "adac 1/0") || !arg_int(argv[1], "value", 0, 1, &on))
+    return;
+  config_get(&c);
+  c.alac = on;
+  config_set(&c);
+
+  printf("alarm clock %s\n", on ? "on" : "off");
+}
+
+/*-------------------------------------------------------------------------+
+| Function: cmd_adat - temperature alarm on/off
++--------------------------------------------------------------------------*/
+void cmd_adat (int argc, char** argv)
+{
+  config_t c;
+  int on;
+
+  if (!arg_count(argc, 1, "adat 1/0") || !arg_int(argv[1], "value", 0, 1, &on))
+    return;
+  config_get(&c);
+  c.alat = on;
+  config_set(&c);
+
+  printf("temperature alarm %s\n", on ? "on" : "off");
 }

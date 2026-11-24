@@ -1,12 +1,3 @@
-//#ifdef notdef
-
-/***************************************************************************
-| File: monitor.c
-|
-| Autor: Carlos Almeida (IST), from work by Jose Rufino (IST/INESC), 
-|        from an original by Leendert Van Doorn
-| Data:  Nov 2002
-***************************************************************************/
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -20,6 +11,14 @@ extern char* my_fgets(char *, int, FILE *);
        void cmd_sos  (int, char** );
 extern void cmd_test (int, char** );
 extern void cmd_rp   (int, char** );
+extern void cmd_mmp  (int, char** );
+extern void cmd_mta  (int, char** );
+extern void cmd_rai  (int, char** );
+extern void cmd_sac  (int, char** );
+extern void cmd_sat  (int, char** );
+extern void cmd_adac (int, char** );
+extern void cmd_adat (int, char** );
+extern void cmd_todo (int, char** );
 
 /*-------------------------------------------------------------------------+
 | Variable and constants definition
@@ -29,16 +28,34 @@ const char InvalMsg[] = "\nInvalid command!";
 
 struct  command_d {
   void  (*cmd_fnct)(int, char**);
-  char* cmd_name;
-  char* cmd_help;
+  const char* cmd_name;
+  const char* cmd_help;
 } const commands[] = {
-  {cmd_sos,  "sos","                  help"},
-  {cmd_test, "test","<arg1> <arg2>    test command"},
-  {cmd_rp,   "rp","                   read parameters (pmon, tala)"}
+  {cmd_sos,  "sos",  "       help"},
+  {cmd_test, "test", "[args] print the arguments (parser check)"},
+  {cmd_todo, "rdt",  "       read date/time (dd/MM/YYYY hh:mm:ss)"},
+  {cmd_todo, "sd",   "d M Y  set date"},
+  {cmd_todo, "rc",   "       read clock"},
+  {cmd_todo, "sc",   "h m s  set clock"},
+  {cmd_todo, "rt",   "       read temperature"},
+  {cmd_todo, "rmm",  "       read temperature max and min"},
+  {cmd_todo, "cmm",  "       clear temperature max and min"},
+  {cmd_rp,   "rp",   "       read parameters (pmon, tala)"},
+  {cmd_mmp,  "mmp",  "p      modify monitoring period (0 = off)"},
+  {cmd_mta,  "mta",  "t      modify alarm duration"},
+  {cmd_rai,  "rai",  "       read alarm info"},
+  {cmd_sac,  "sac",  "h m s  set alarm clock"},
+  {cmd_sat,  "sat",  "tl th  set temperature thresholds"},
+  {cmd_adac, "adac", "1/0    alarm clock on/off"},
+  {cmd_adat, "adat", "1/0    temperature alarm on/off"},
+  {cmd_todo, "rts",  "       read task state (BL, HB, CS)"},
+  {cmd_todo, "adbl", "1/0    bubble level on/off"},
+  {cmd_todo, "adhb", "1/0    Hit Bit on/off"},
+  {cmd_todo, "adcs", "1/0    config sound on/off"}
 };
 
 #define NCOMMANDS  (sizeof(commands)/sizeof(struct command_d))
-#define ARGVECSIZE 3
+#define ARGVECSIZE 4
 #define MAX_LINE   50
 
 /*-------------------------------------------------------------------------+
@@ -50,7 +67,7 @@ void cmd_sos (int argc, char **argv)
 
   printf("%s\n", TitleMsg);
   for (i=0; i<NCOMMANDS; i++)
-    printf("%s %s\n", commands[i].cmd_name, commands[i].cmd_help);
+    printf("%-5s %s\n", commands[i].cmd_name, commands[i].cmd_help);
 }
 
 /*-------------------------------------------------------------------------+
@@ -103,5 +120,3 @@ void monitor (void)
     } /* if my_getline */
   } /* forever */
 }
-
-//#endif //notdef
