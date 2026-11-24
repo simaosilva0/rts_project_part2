@@ -187,13 +187,62 @@ Copy `frtos.bin` onto the `MBED` USB drive and reset the board. Since the folder
 Serial console: 115200 baud, local echo on. The board already sends `\r\n` (`frtos/mbed_app.json`), so the terminal's "CR on every LF" option makes no difference. On Linux the board is `/dev/ttyACM0` (`picocom -b 115200 --echo /dev/ttyACM0`), so `mbedWinSerial` isn't needed.
 
 
+## Testing
+
+Flash `frtos.bin`, open the terminal (`picocom -b 115200 --echo /dev/ttyACM0`) and press the board's reset button, so the title and the `Cmd>` prompt aren't missed. Each line below lists what to type or do and what should happen. The "Board" column says whether it has been checked on real hardware; update it after every board session.
+
+Last board session: none yet.
+
+### Console
+
+| Test | Expected | Board |
+|---|---|---|
+| reset the board | `Application Control Monitor`, `Type sos for help`, `Cmd>` | not yet |
+| `sos` | 21 commands in two aligned columns, no staircase lines | not yet |
+| `tset`, 3 backspaces, `est`, Enter | runs as `test` | not yet |
+| `test a b c` | `argv[0]` to `argv[3]` | not yet |
+| `xyz` | `Invalid command!` | not yet |
+| `rdt` (or any command not written yet) | `rdt: not implemented yet` | not yet |
+
+### Parameters and alarm settings
+
+| Test | Expected | Board |
+|---|---|---|
+| `rp` after reset | `pmon = 5 s, tala = 3 s` | not yet |
+| `rai` after reset | `alarm clock: 12:00:00 (off)`, `temperature: tlow = 15 C, thigh = 30 C (off)` | not yet |
+| `mmp 10`, then `rp` | `pmon = 10 s`, and `rp` shows it | not yet |
+| `mta 60`, `mta 61` | `tala = 60 s`; then `t must be a number 0..60` | not yet |
+| `sac 7 30 0`, then `rai` | `alarm clock = 07:30:00`, and `rai` shows it | not yet |
+| `sac 7 99 0`, then `rai` | `m must be a number 0..59`, alarm unchanged | not yet |
+| `sat 20 25` / `sat 30 20` | thresholds changed / `tl must be lower than th` | not yet |
+| `adac 1`, `adat 1`, then `rai` | `alarm clock on`, `temperature alarm on`, `rai` shows both `(on)` | not yet |
+| `mmp abc`, `mmp 12x`, `mmp` | `p must be a number 0..99` twice, then `usage: mmp p` | not yet |
+| `mmp 5 6` | `usage: mmp p` | not yet |
+
+### Still to write
+
+To be filled in as each part is implemented, from the spec:
+
+- **Clock:** `sd`/`sc` set the RTC and keep it running; `rdt`/`rc` read it in `dd/MM/YYYY hh:mm:ss`; out-of-range dates are rejected; the alarm clock sounds at `ALAH:ALAM:ALAS` when `ALAC = 1`.
+- **Temperature:** periodic reads every `pmon` s, none when `pmon = 0`; `rt` works even when `pmon = 0`; `rmm`/`cmm` with timestamps; RGB LED blue below `tlow`, red above `thigh`, graded in between; an alarm outside `[tlow, thigh]` when `ALAT = 1`.
+- **Buzzer:** sounds for `tala` s on each alarm; config sound mode (`adcs 1`) changes the PWM period with pot1 and the duty cycle with pot2.
+- **LCD:** `hh:mm:ss` updating every second, `A: C T` showing which alarms are on, `T(C)= tt.t`.
+- **Bubble level:** the bubble follows the board's tilt on X and Y; `adbl 0`/`1` stops and restarts it.
+- **Hit Bit:** pattern rotating on LED1-4, the joystick centre clears a lit bit or adds one, a win blinks all 4 LEDs 3 times; `adhb 0`/`1`.
+- **Task states:** `rts` shows BL, HB and CS, initially 1, 0 and 0.
+
+
 ## Repository layout
 
 ```
 frtos/              the application, built from txCmdFRTOS
-  main.cpp            task creation and startup
-  monitor.cpp         command interpreter (course code)
-  comando.cpp         console command handlers
+  main.cpp            builds the system: init modules, create tasks, start the scheduler
+  console.cpp/.h      UART receive interrupt, input queue, console task
+  monitor.cpp         command interpreter and command table (course code)
+  commands.cpp        console command handlers
+  shared.cpp/.h       shared parameters and task states, behind a mutex
+  mbed_app.json       mbed settings (newline conversion)
   freertos-cm3/       FreeRTOS V9.0.0 and FreeRTOSConfig.h
 materials/          spec, FreeRTOS manuals, lab notes and course examples
+STUDY.md            every design decision and the theory behind it
 ```
