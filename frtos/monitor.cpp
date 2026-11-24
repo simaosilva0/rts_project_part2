@@ -17,10 +17,8 @@ extern char* my_fgets(char *, int, FILE *);
 /*-------------------------------------------------------------------------+
 | Headers of command functions
 +--------------------------------------------------------------------------*/ 
-extern void cmd_sair (int, char** );
-extern void cmd_test (int, char** );
        void cmd_sos  (int, char** );
-extern void cmd_send (int, char** );
+extern void cmd_test (int, char** );
 
 /*-------------------------------------------------------------------------+
 | Variable and constants definition
@@ -34,8 +32,6 @@ struct  command_d {
   char* cmd_help;
 } const commands[] = {
   {cmd_sos,  "sos","                  help"},
-  {cmd_send, "send","<msg>            send message"},
-  {cmd_sair, "sair","                 sair"},
   {cmd_test, "test","<arg1> <arg2>    test command"}
 };
 

@@ -1,19 +1,15 @@
 #include "mbed.h"
 #include "FreeRTOS.h"
 #include "task.h"
-#include "queue.h"
+#include "shared.h"
 
-DigitalOut led1(LED1);
-DigitalOut led2(LED2);
 Serial pc(USBTX, USBRX);
-
-QueueHandle_t xQueue;
 
 extern void monitor(void);
 
 /*-------------------------------------------------------------------------+
-| Function: my_fgets        (called from my_getline / monitor) 
-+--------------------------------------------------------------------------*/ 
+| Function: my_fgets        (called from my_getline / monitor)
++--------------------------------------------------------------------------*/
 char* my_fgets (char* ln, int sz, FILE* f)
 {
   int i = 0;
@@ -35,53 +31,28 @@ char* my_fgets (char* ln, int sz, FILE* f)
   return ln;
 }
 
-void vTask1( void *pvParameters ) {
-int32_t lValueToSend;
-BaseType_t xStatus;
-    led1 = 1;
-    for( ;; ) {
-        lValueToSend = 201;
-        xStatus = xQueueSend( xQueue, &lValueToSend, 0 );
-        monitor(); //does not return
-        led1 = !led1;
-    }
+/*-------------------------------------------------------------------------+
+| Task: console - runs the command interpreter
++--------------------------------------------------------------------------*/
+void vConsoleTask(void *pvParameters)
+{
+    monitor();      /* never returns */
 }
 
-void vTask2( void *pvParameters ) {
-int32_t lReceivedValue;
-BaseType_t xStatus;
+int main(void)
+{
+    pc.baud(115200);                    /* 115200 bit/s, must match the terminal */
+    pc.format(8, SerialBase::None, 1);  /* 8N1: 8 data bits, no parity, 1 stop bit (the default) */
 
-    led2 = 1;
-    printf("Hello from mbed -- FreeRTOS / cmd\n");
-    for( ;; ) {
-        vTaskDelay( 1000 );
-        xStatus = xQueueReceive( xQueue, &lReceivedValue, 1000 );
-        if( xStatus == pdPASS ) {
-            printf( "\nReceived = %ld\n", (long)lReceivedValue );
-        }
-        led2 = !led2;
+    if (config_init() != pdPASS) {
+        printf("config_init failed: out of heap\n");
+        for (;;);
     }
-}
 
-int main( void ) {
-    /* Perform any hardware setup necessary. */
-//    prvSetupHardware();
+    xTaskCreate(vConsoleTask, "console", 4*configMINIMAL_STACK_SIZE, NULL, 1, NULL);
 
-    pc.baud(115200);
-    pc.format(8, SerialBase::None, 1);
-
-//    printf("Hello from mbed -- FreeRTOS / cmd\n");
-
-    /* --- APPLICATION TASKS CAN BE CREATED HERE --- */
-
-    xQueue = xQueueCreate( 3, sizeof( int32_t ) );
-    xTaskCreate( vTask1, "Task 1", 4*configMINIMAL_STACK_SIZE, NULL, 1, NULL );
-    xTaskCreate( vTask2, "Task 2", 4*configMINIMAL_STACK_SIZE, NULL, 2, NULL );
-    /* Start the created tasks running. */
     vTaskStartScheduler();
 
-    /* Execution will only reach here if there was insufficient heap to
-    start the scheduler. */
-    for( ;; );
-    return 0;
+    /* Only reached if there was not enough heap to start the scheduler. */
+    for (;;);
 }
