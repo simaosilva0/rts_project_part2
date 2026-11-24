@@ -10,6 +10,7 @@ The project's technical decisions and the reasons behind them, by topic. Updated
 6. Interrupt-driven console input
 7. Console commands and input validation
 8. Clock and RTC
+9. LCD manager task
 
 ## 1. Build environment
 
@@ -202,3 +203,32 @@ The board's USB connection also shows up on the PC as a serial port (`/dev/ttyAC
 - **`strftime` for output.** Its `%` codes map to `struct tm` fields with padding and offsets built in: `%d` day, `%m` month (adds 1), `%Y` year (adds 1900), `%H:%M:%S`. The format decides which fields are printed, so `rdt` and `rc` share `clock_now` and differ only in the format. Unlike `printf`, `strftime` never writes past the buffer: if the result does not fit, it returns 0 and the buffer is undefined, so buffers are sized exactly (19 + `\0` = 20 for `dd/mm/yyyy hh:mm:ss`, 8 + `\0` = 9 for `hh:mm:ss`).
 - **On first power-up** `time()` finds the RTC disabled and starts it at 01/01/1970 00:00:00, a valid date inside the spec range. `clock_init()` calls it once so this happens before any task runs.
 - **Flash cost:** the C library's date functions add about 22 KB of code (78 KB total of the LPC1768's 512 KB).
+
+## 9. LCD manager task
+
+`lcd.h`/`lcd.cpp` implement the decision from section 2: one task owns the LCD, and the others send it messages. The driver library (`C12832/`, from the course's `C12832.zip`, without its `.hg` Mercurial folder) is compiled as part of the program.
+
+### The display hardware and driver
+
+- The C12832 is 128x32 pixels, one bit each: 4096 bits = 512 bytes. The driver keeps a copy of the whole screen in RAM, the frame buffer (`buffer[512]`). `locate`, `_putc`, `rect` and `fillcircle` only change bits in that buffer; `copy_to_lcd()` sends all 512 bytes over SPI (a serial bus: data on MOSI, clock on SCK) at 20 MHz, about 0.3 ms plus overhead.
+- **`set_auto_up(0)`.** By default the driver sends the whole buffer after every drawing call (every character, every rectangle); drawing three lines would take about 25 transfers. With auto-update off, the task draws into the buffer and sends it once.
+- **Pins** `C12832 lcd(p5, p7, p6, p8, p11)` (mosi, sck, reset, a0, ncs), as in the course's `tstLM75B` example.
+- **The constructor runs before `main()`.** `lcd` is a global C++ object, so it is initialized before `main()`. The constructor resets the display with `wait_ms(5)`, a busy-wait, which is harmless because no task exists yet.
+- **Font and layout.** `Small_7` is 9 px tall, so three text lines fit at y = 0, 11 and 22. The right 32x32 square (x = 96..127) is reserved for the bubble level. The constants live in `lcd.h`, so the layout is defined in one place.
+- **The font is proportional** (each character has its own width), so new text can be narrower than the old one; each line is cleared (`fillrect` with colour 0) before it is redrawn, or old pixels would remain.
+
+### Ownership instead of locking
+
+- The `lcd` object is `static` in `lcd.cpp`, so no other file can reach the driver; the compiler enforces that only the LCD task draws. With a single user there is no race on the LCD and no mutex: mutual exclusion comes from ownership.
+- **No `lcd.printf`.** The driver inherits `printf` from mbed's `Stream`, which writes through the C library's stdio (`FILE`, `vfprintf`). That code keeps shared internal state and, without extra configuration, is not reentrant; two tasks inside it at once (the console printing and the LCD drawing) could corrupt each other. Text is drawn with `locate` + `_putc` straight into the frame buffer. Numbers are formatted with `snprintf` into a local buffer, with integers only: that only touches the caller's stack. The dangerous parts are `FILE` streams and float formatting, and `snprintf`, unlike `sprintf`, never writes past the buffer.
+
+### Message passing
+
+- **Shared memory with a lock vs. message passing.** The config is shared memory behind a mutex. The LCD uses message passing: a FreeRTOS queue copies the message in on send and out on receive, so the sender can build it in a local variable and return, and the two tasks never touch the same memory.
+- **The message is a tagged union** (`lcd_msg_t`): `type` (the tag) says which update it is; a `union` holds the data, the time (3 bytes), the alarm flags (2), the temperature (2) or the bubble offset (2). Union members share the same memory, so a message is only as large as the largest member plus the tag: 8 bytes after alignment. The receiver reads `type` first and only the matching member; reading another one would give garbage.
+- **The interface is a set of functions:** `lcd_show_clock(h, m, s)`, `lcd_show_alarms(c, t)`, `lcd_show_temp(tenths)`, `lcd_show_bubble(dx, dy)`. The message type, the queue and `send()` are `static` in `lcd.cpp`. Other modules never see queues, structs or pixel coordinates, and the message format can change without touching them.
+- **Sending never blocks** (`xQueueSend(..., 0)`). If the 8-message queue is full, the update is dropped and the sender carries on. The display is the least important job in the system: reacting to the joystick or sounding an alarm on time matters (hard deadlines), while a display update that is late or skipped is harmless (a soft deadline), and the next one replaces it.
+- **Batching.** The task sleeps in `xQueueReceive(..., portMAX_DELAY)`. After the first message wakes it, it keeps receiving with timeout 0 until the queue is empty, drawing each message into the frame buffer, then calls `copy_to_lcd()` once. Updates that arrive together cost one SPI transfer.
+- **Temperature in tenths of °C (fixed-point):** `lcd_show_temp(235)` means 23.5 °C. The Cortex-M3 has no floating-point hardware, so float operations run as slow software routines, and float formatting uses C-library code with shared buffers (not reentrant). With an integer, `abs(t) / 10` and `abs(t) % 10` give the two parts, and the sign is printed separately so -0.5 shows as `-0.5`. The LM75B reads in 0.125 °C steps, so tenths keep all the precision the display shows.
+- **Drawing details.** `C` and `T` sit at fixed positions (x = 14 and 24), so `T` does not move when the alarm clock is turned off. The bubble offset is clamped to ±12 px, so it can never draw outside its square, even with bad data: the code that owns a resource protects it. The initial screen shows `--:--:--` and `--.-` until the first values arrive.
+- **Task settings (provisional):** priority 1, stack 2x minimal (no `printf`). Step 5 sets all priorities together, checks every `xTaskCreate`, and measures stacks.

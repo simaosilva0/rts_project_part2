@@ -252,6 +252,8 @@ frtos/              the application, built from txCmdFRTOS
   commands.cpp        console command handlers
   shared.cpp/.h       shared parameters and task states, behind a mutex
   clock.cpp/.h        RTC access: read and set date/time
+  lcd.cpp/.h          LCD manager task and its message interface
+  C12832/             LCD driver library (course code)
   mbed_app.json       mbed settings (newline conversion)
   freertos-cm3/       FreeRTOS V9.0.0 and FreeRTOSConfig.h
 materials/          spec, FreeRTOS manuals, lab notes and course examples

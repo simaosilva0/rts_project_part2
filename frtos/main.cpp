@@ -4,15 +4,17 @@
 #include "shared.h"
 #include "console.h"
 #include "clock.h"
+#include "lcd.h"
 
 int main(void)
 {
-    if (console_init() != pdPASS || config_init() != pdPASS || clock_init() != pdPASS) {
+    if (console_init() != pdPASS || config_init() != pdPASS || clock_init() != pdPASS || lcd_init() != pdPASS) {
         printf("init failed: out of heap\n");
         for (;;);
     }
 
     xTaskCreate(vConsoleTask, "console", 4*configMINIMAL_STACK_SIZE, NULL, 1, NULL);
+    xTaskCreate(vLcdTask,     "lcd",     2*configMINIMAL_STACK_SIZE, NULL, 1, NULL);
 
     vTaskStartScheduler();
 
