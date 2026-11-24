@@ -4,6 +4,7 @@
 #include "queue.h"
 #include "C12832.h"
 #include "lcd.h"
+#include "shared.h"
 
 #define LCD_QUEUE_LEN 8
 
@@ -138,13 +139,16 @@ static void draw(const lcd_msg_t *msg)
 void vLcdTask(void *pvParameters)
 {
     lcd_msg_t msg;
+    config_t c;
 
     lcd.set_auto_up(0);         /* draw in the buffer, send it once */
     lcd.cls();
     draw_text(0, LCD_LINE0, "--:--:--");
-    draw_text(0, LCD_LINE1, "A:");
     draw_text(0, LCD_LINE2, "T(C)= --.-");
     lcd.copy_to_lcd();
+
+    config_get(&c);
+    lcd_show_alarms(c.alac, c.alat);    /* first message: the initial alarm state */
 
     for (;;) {
         xQueueReceive(lcd_queue, &msg, portMAX_DELAY);     /* sleep until a message */

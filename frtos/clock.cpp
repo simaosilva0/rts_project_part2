@@ -1,15 +1,23 @@
 #include "mbed.h"
 #include "clock.h"
+#include "task.h"
 #include "semphr.h"
+#include "lcd.h"
+
+#define RTC_IRQ_PRIO 6         /* must be >= 5 to call FreeRTOS from the ISR */
 
 static SemaphoreHandle_t rtc_mutex;     /* protects the RTC registers */
+static SemaphoreHandle_t tick_sem;      /* given by the RTC every second */
 
 BaseType_t clock_init(void)
 {
     rtc_mutex = xSemaphoreCreateMutex();
-    if (rtc_mutex == NULL)
+    tick_sem = xSemaphoreCreateBinary();
+
+    if (rtc_mutex == NULL || tick_sem == NULL)
         return pdFAIL;
     time(NULL);     /* starts the RTC at 01/01/1970 00:00:00 if it isn't running */
+
     return pdPASS;
 }
 
@@ -74,4 +82,36 @@ void clock_set_time(int h, int m, int s)
     tm.tm_min  = m;
     tm.tm_sec  = s;
     rtc_set(mktime(&tm));
+}
+
+/*-------------------------------------------------------------------------+
+| RTC interrupt: the seconds counter just changed
++--------------------------------------------------------------------------*/
+static void rtc_isr(void)
+{
+    BaseType_t woken = pdFALSE;
+
+    LPC_RTC->ILR = 1;                       /* clear the interrupt flag */
+    xSemaphoreGiveFromISR(tick_sem, &woken);
+    portYIELD_FROM_ISR(woken);
+}
+
+/*-------------------------------------------------------------------------+
+| Task: clock - runs once per second, on the RTC's own second
++--------------------------------------------------------------------------*/
+void vClockTask(void *pvParameters)
+{
+    struct tm now;
+
+    LPC_RTC->ILR = 1;                       /* clear any old interrupt flag */
+    LPC_RTC->CIIR = 1;                      /* interrupt on every seconds increment */
+    NVIC_SetVector(RTC_IRQn, (uint32_t)rtc_isr);
+    NVIC_SetPriority(RTC_IRQn, RTC_IRQ_PRIO);
+    NVIC_EnableIRQ(RTC_IRQn);
+
+    for (;;) {
+        clock_now(&now);
+        lcd_show_clock(now.tm_hour, now.tm_min, now.tm_sec);
+        xSemaphoreTake(tick_sem, portMAX_DELAY);    /* sleep until the next second */
+    }
 }

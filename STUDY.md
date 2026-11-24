@@ -11,6 +11,7 @@ The project's technical decisions and the reasons behind them, by topic. Updated
 7. Console commands and input validation
 8. Clock and RTC
 9. LCD manager task
+10. Clock task: periodic work on the RTC's second
 
 ## 1. Build environment
 
@@ -231,4 +232,35 @@ The board's USB connection also shows up on the PC as a serial port (`/dev/ttyAC
 - **Batching.** The task sleeps in `xQueueReceive(..., portMAX_DELAY)`. After the first message wakes it, it keeps receiving with timeout 0 until the queue is empty, drawing each message into the frame buffer, then calls `copy_to_lcd()` once. Updates that arrive together cost one SPI transfer.
 - **Temperature in tenths of °C (fixed-point):** `lcd_show_temp(235)` means 23.5 °C. The Cortex-M3 has no floating-point hardware, so float operations run as slow software routines, and float formatting uses C-library code with shared buffers (not reentrant). With an integer, `abs(t) / 10` and `abs(t) % 10` give the two parts, and the sign is printed separately so -0.5 shows as `-0.5`. The LM75B reads in 0.125 °C steps, so tenths keep all the precision the display shows.
 - **Drawing details.** `C` and `T` sit at fixed positions (x = 14 and 24), so `T` does not move when the alarm clock is turned off. The bubble offset is clamped to ±12 px, so it can never draw outside its square, even with bad data: the code that owns a resource protects it. The initial screen shows `--:--:--` and `--.-` until the first values arrive.
+- **The `A: C T` line is event-driven.** It changes only when `adac` or `adat` runs. Polling (some task re-sending the flags every second) would mean 86,400 messages a day for a value that almost never changes, plus up to 1 s of lag. The console is the only writer of the config, so it is the one place that knows when the flags change, and it calls `lcd_show_alarms(c.alac, c.alat)` right after `config_set`.
+  - Both flags travel in every message, taken from the console's updated copy, so the LCD redraws the whole line from one consistent state and keeps no copy of the truth of its own.
+  - At startup the LCD task reads the config and sends itself an alarms message, so the initial line goes through the same drawing code as every later change. This happens in the task, not in `lcd_init()`: `config_get` takes a mutex, and calls that can block must not run before the scheduler starts.
 - **Task settings (provisional):** priority 1, stack 2x minimal (no `printf`). Step 5 sets all priorities together, checks every `xTaskCreate`, and measures stacks.
+
+## 10. Clock task: periodic work on the RTC's second
+
+`vClockTask` (`clock.cpp`) runs once per second: it reads the RTC and sends `hh:mm:ss` to the LCD. Part 2 adds the alarm-clock check to the same loop.
+
+### Theory
+
+- **Periodic tasks.** A periodic task does its job every T: the clock every second, the temperature every `pmon`, the bubble level several times a second. Three ways to time one:
+
+| Method | How | Problem |
+|---|---|---|
+| `vTaskDelay(T)` | sleep T ticks after the work | the period is T plus the work plus any preemption, so it drifts |
+| `vTaskDelayUntil(&last, T)` | wake at fixed points last + T, + 2T, ... | no drift, but it follows the CPU's clock |
+| hardware interrupt | the device that defines the event wakes the task | the task runs when the event happens |
+
+- **Two clocks drift apart.** The RTC (32.768 kHz crystal) and the FreeRTOS tick (the CPU's 12 MHz crystal) are independent. A task timed by the tick would slowly slide relative to the RTC's seconds; every so often it would wake just before the RTC changed and show the same second twice, then later skip one. Waking on the RTC's own interrupt ties the task to the real second.
+- **Binary semaphore for signalling.** The ISR gives (an event happened), the task takes (sleep until it happens): the "semaphore to signal" row of the table in section 5. No data travels, only the moment, so a semaphore is enough instead of a queue. A mutex would be wrong: it has an owner that must give it back, and it cannot be used from an ISR. A binary semaphore has no owner.
+- **A binary semaphore does not count.** Two gives before one take merge into one. That is acceptable here because the task never counts ticks: it reads the real time from the RTC each time, so a missed signal could only skip one display update, never show a wrong time.
+
+### Decisions
+
+- **The RTC counter-increment interrupt.** `CIIR` (Counter Increment Interrupt Register) bit 0 enables an interrupt on every seconds increment. `ILR` (Interrupt Location Register) bit 0 is its flag; writing 1 clears it. The ISR must clear it, or it is entered again immediately, forever (as with reading the UART character). `NVIC_SetVector`, `NVIC_SetPriority(RTC_IRQn, 6)` (the same 5..31 rule as the UART) and `NVIC_EnableIRQ` install and enable it.
+- **The ISR is the deferred-processing pattern again:** clear the flag, `xSemaphoreGiveFromISR(tick_sem, &woken)`, `portYIELD_FROM_ISR(woken)`.
+- **The task enables the interrupt as its first action.** `tick_sem` is created in `clock_init()`, but the interrupt only matters once its listener runs; enabling it inside the task means the ISR can never run before the scheduler, without relying on FreeRTOS masking interrupts before the scheduler starts (which the UART does).
+- **A semaphore, not a task notification.** Task notifications are lighter, but the ISR would need the task's handle, and `xTaskGetCurrentTaskHandle` is disabled in this config (`INCLUDE_xTaskGetCurrentTaskHandle = 0`). The semaphore needs no handle.
+- **Show first, then wait.** The loop reads and displays the time before taking the semaphore, so the display is right at startup instead of showing `--:--:--` for up to a second. After `sc`, it catches up at the next tick.
+- **Priority 3** (above the console and LCD at 1). The work is short and once a second, and the alarm-clock check (Part 2) must happen on the second, not whenever the CPU is free. General rule: the more urgent and shorter a task's work, the higher its priority. Step 5 sets the full scheme.
+- **Task creation order does not matter.** When the scheduler starts it runs the highest-priority ready task, whatever order the tasks were created in.

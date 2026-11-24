@@ -9,4 +9,6 @@ void clock_now(struct tm *now);                  /* current date and time */
 BaseType_t clock_set_date(int d, int M, int Y);  /* pdFAIL if the date doesn't exist */
 void clock_set_time(int h, int m, int s);
 
+void vClockTask(void *pvParameters);            /* wakes every second (RTC interrupt) */
+
 #endif

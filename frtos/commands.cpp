@@ -2,6 +2,7 @@
 #include <stdlib.h>
 
 #include "clock.h"
+#include "lcd.h"
 #include "shared.h"
 
 /*-------------------------------------------------------------------------+
@@ -170,6 +171,7 @@ void cmd_adac (int argc, char** argv)
   config_get(&c);
   c.alac = on;
   config_set(&c);
+  lcd_show_alarms(c.alac, c.alat);
 
   printf("alarm clock %s\n", on ? "on" : "off");
 }
@@ -187,6 +189,7 @@ void cmd_adat (int argc, char** argv)
   config_get(&c);
   c.alat = on;
   config_set(&c);
+  lcd_show_alarms(c.alac, c.alat);
 
   printf("temperature alarm %s\n", on ? "on" : "off");
 }

@@ -229,6 +229,15 @@ Flash `frtos.bin`, open the terminal (`picocom -b 115200 --echo /dev/ttyACM0`) a
 | `sd 1 1 2038`, `sc 24 0 0` | `Y must be a number 1970..2037`, `h must be a number 0..23` |
 | press reset, then `rdt` | the time is kept: the RTC survives a reset |
 
+### LCD
+
+| Test | Expected |
+|---|---|
+| reset the board | line 1 counting `hh:mm:ss`, line 2 `A:`, line 3 `T(C)= --.-` |
+| watch the clock for a minute next to `rc` | the LCD and `rc` agree, no second shown twice or skipped |
+| `sc 12 0 0` | the LCD shows `12:00:00` within a second |
+| `adac 1`, `adat 1`, `adac 0` | line 2: `A: C`, then `A: C T`, then `A:   T` (the `T` stays in place) |
+
 ### Still to write
 
 Tests for the parts not implemented yet, from the spec:
@@ -236,7 +245,7 @@ Tests for the parts not implemented yet, from the spec:
 - **Alarm clock:** sounds at `ALAH:ALAM:ALAS` when `ALAC = 1`.
 - **Temperature:** periodic reads every `pmon` s, none when `pmon = 0`; `rt` works even when `pmon = 0`; `rmm`/`cmm` with timestamps; RGB LED blue below `tlow`, red above `thigh`, graded in between; an alarm outside `[tlow, thigh]` when `ALAT = 1`.
 - **Buzzer:** sounds for `tala` s on each alarm; config sound mode (`adcs 1`) changes the PWM period with pot1 and the duty cycle with pot2.
-- **LCD:** `hh:mm:ss` updating every second, `A: C T` showing which alarms are on, `T(C)= tt.t`.
+- **LCD temperature line:** `T(C)= tt.t` shows the last reading.
 - **Bubble level:** the bubble follows the board's tilt on X and Y; `adbl 0`/`1` stops and restarts it.
 - **Hit Bit:** pattern rotating on LED1-4, the joystick centre clears a lit bit or adds one, a win blinks all 4 LEDs 3 times; `adhb 0`/`1`.
 - **Task states:** `rts` shows BL, HB and CS, initially 1, 0 and 0.

@@ -13,6 +13,7 @@ int main(void)
         for (;;);
     }
 
+    xTaskCreate(vClockTask,   "clock",   2*configMINIMAL_STACK_SIZE, NULL, 3, NULL);
     xTaskCreate(vConsoleTask, "console", 4*configMINIMAL_STACK_SIZE, NULL, 1, NULL);
     xTaskCreate(vLcdTask,     "lcd",     2*configMINIMAL_STACK_SIZE, NULL, 1, NULL);
 
