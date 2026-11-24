@@ -2,13 +2,16 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "shared.h"
+#include "buzzer.h"
 #include "console.h"
 #include "clock.h"
+#include "i2c_bus.h"
 #include "lcd.h"
 
 int main(void)
 {
-    if (console_init() != pdPASS || config_init() != pdPASS || clock_init() != pdPASS || lcd_init() != pdPASS) {
+    if (console_init() != pdPASS || config_init() != pdPASS || clock_init() != pdPASS || lcd_init() != pdPASS ||
+        i2c_bus_init() != pdPASS || buzzer_init() != pdPASS) {
         printf("init failed: out of heap\n");
         for (;;);
     }

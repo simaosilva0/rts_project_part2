@@ -12,6 +12,7 @@ The project's technical decisions and the reasons behind them, by topic. Updated
 8. Clock and RTC
 9. LCD manager task
 10. Clock task: periodic work on the RTC's second
+11. The I2C bus and the buzzer requests
 
 ## 1. Build environment
 
@@ -264,3 +265,25 @@ The board's USB connection also shows up on the PC as a serial port (`/dev/ttyAC
 - **Show first, then wait.** The loop reads and displays the time before taking the semaphore, so the display is right at startup instead of showing `--:--:--` for up to a second. After `sc`, it catches up at the next tick.
 - **Priority 3** (above the console and LCD at 1). The work is short and once a second, and the alarm-clock check (Part 2) must happen on the second, not whenever the CPU is free. General rule: the more urgent and shorter a task's work, the higher its priority. Step 5 sets the full scheme.
 - **Task creation order does not matter.** When the scheduler starts it runs the highest-priority ready task, whatever order the tasks were created in.
+
+## 11. The I2C bus and the buzzer requests
+
+The last two shared interfaces, used by the parts: `i2c_bus.h`/`.cpp` (a mutex for the I2C bus) and `buzzer.h`/`.cpp` (the alarm request queue).
+
+### The I2C bus
+
+- **I2C** uses two wires shared by every device: SDA (data) and SCL (clock). The mbed is the master and starts every transfer; the LM75B and the MMA7660 are slaves, each with its own address, both on p28/p27. A read is a transaction: START, address + write, the register number, a repeated START, address + read, the data bytes, STOP. `LM75B::read()` does exactly this: `i2c.write(addr, cmd, 1)` selects the temperature register, then `i2c.read(addr, cmd, 2)` reads it.
+- **Why a mutex.** The temperature task (Part 1) and the bubble level task (Part 3) can each be preempted in the middle of a transaction. If the other one runs a transaction in between, the first reads the wrong register or the bus is left mid-transfer: a race on a hardware resource. Each driver library creates its own mbed `I2C` object on the same pins, so nothing below us coordinates them, and mbed's I2C lock is empty without the mbed RTOS.
+- **A mutex here, a manager task for the LCD.** A manager task suits work callers can hand off and forget (the LCD: several ms per redraw, no result needed). An I2C reading takes about 0.3-0.5 ms at 100 kHz and the caller needs the value back at once; a manager task would need a request queue, a reply queue and two task switches per reading. A mutex is simpler and faster, and priority inheritance bounds the wait whatever priorities the two tasks get.
+- **`i2c_lock()`/`i2c_unlock()`.** The driver objects belong to Parts 1 and 3, so they make the calls and must wrap them. The functions hide the FreeRTOS mutex, so the other modules need no `semphr.h`, and only `i2c_bus.cpp` would change if the mechanism did. Rules for the users:
+  1. Only the driver call goes between lock and unlock: no `vTaskDelay`, no `lcd_show_...`, no `printf` while holding the bus.
+  2. Unlock on every path; a forgotten unlock blocks the other task forever.
+  3. The MMA7660 must be created active (`MMA7660 acc(p28, p27, true)`). In standby, its read functions call `wait(0.012 + ...)`, a 12 ms busy-wait that would hold the bus and the CPU.
+- **Driver notes for the parts.** `LM75B::read()` returns a `float` in °C; Part 1 converts it to tenths for `lcd_show_temp`. Both drivers talk to their device in their constructors, which run before `main()` (global objects), when no task exists yet.
+
+### The buzzer request queue
+
+- The spec gives the alarm sound to a specific task. Alarms come from two producers: the clock task (alarm clock, Part 2) and the temperature task (thresholds, Part 1). Both call `buzzer_alarm(ALARM_CLOCK)` or `buzzer_alarm(ALARM_TEMP)`, which puts a request in a 4-slot queue; the buzzer task takes requests and sounds for `tala` seconds.
+- **A queue, not a semaphore:** each request carries which alarm it is, so Part 2 can decide what to do when alarms overlap. A semaphore only says that something happened.
+- **Never blocks (timeout 0).** The clock task must not stall on the second because the buzzer is busy. A full queue means 4 alarms are already waiting, so dropping one more loses nothing.
+- **Interfaces before tasks.** `buzzer_alarm` works before any buzzer task exists: requests queue up and, once the queue is full, are dropped. The parts can write their calls against interfaces that already compile.
