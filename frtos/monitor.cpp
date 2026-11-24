@@ -25,8 +25,8 @@ extern void cmd_send (int, char** );
 /*-------------------------------------------------------------------------+
 | Variable and constants definition
 +--------------------------------------------------------------------------*/ 
-const char TitleMsg[] = "\n Application Control Monitor\n";
-const char InvalMsg[] = "\nInvalid command!";
+const char TitleMsg[] = "\r\n Application Control Monitor\r\n";
+const char InvalMsg[] = "\r\nInvalid command!";
 
 struct  command_d {
   void  (*cmd_fnct)(int, char**);
@@ -50,9 +50,9 @@ void cmd_sos (int argc, char **argv)
 {
   int i;
 
-  printf("%s\n", TitleMsg);
+  printf("%s\r\n", TitleMsg);
   for (i=0; i<NCOMMANDS; i++)
-    printf("%s %s\n", commands[i].cmd_name, commands[i].cmd_help);
+    printf("%s %s\r\n", commands[i].cmd_name, commands[i].cmd_help);
 }
 
 /*-------------------------------------------------------------------------+
@@ -71,7 +71,7 @@ int my_getline (char** argv, int argvsize)
      i.e. compliant with the (int argc, char **argv) specification --------*/
 
   for (argc=0,p=line; (*line != '\0') && (argc < argvsize); p=NULL,argc++) {
-    p = strtok(p, " \t\n");
+    p = strtok(p, " \t\r\n");
     argv[argc] = p;
     if (p == NULL) return argc;
   }
@@ -87,9 +87,10 @@ void monitor (void)
   static char *argv[ARGVECSIZE+1], *p;
   int argc, i;
 
-  printf("%s Type sos for help\n", TitleMsg);
+  printf("%s Type sos for help\r\n", TitleMsg);
   for (;;) {
-    printf("\nCmd> ");
+    printf("\r\nCmd> ");
+    fflush(stdout);
     /* Reading and parsing command line  ----------------------------------*/
     if ((argc = my_getline(argv, ARGVECSIZE)) > 0) {
       for (p=argv[0]; *p != '\0'; *p=tolower(*p), p++);

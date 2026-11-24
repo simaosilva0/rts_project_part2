@@ -18,11 +18,23 @@ char* my_fgets (char* ln, int sz, FILE* f)
 {
 //  fgets(line, MAX_LINE, stdin);
 //  pc.gets(line, MAX_LINE);
-  int i; char c;
-  for(i=0; i<sz-1; i++) {
+  int i = 0;
+  char c;
+  while (i < sz-1) {
       c = pc.getc();
-      ln[i] = c;
-      if ((c == '\n') || (c == '\r')) break;
+      if (c == '\r' || c == '\n') {          // end of line: echo CRLF, don't store terminator
+          pc.putc('\r'); pc.putc('\n');
+          break;
+      }
+      if ((c == 0x7f || c == '\b') && i > 0) {   // backspace
+          i--;
+          pc.putc('\b'); pc.putc(' '); pc.putc('\b');
+          continue;
+      }
+      if (c >= 32 && c < 127) {              // printable only: echo and store
+          pc.putc(c);
+          ln[i++] = c;
+      }
   }
   ln[i] = '\0';
 
@@ -46,12 +58,12 @@ int32_t lReceivedValue;
 BaseType_t xStatus;
 
     led2 = 1;
-    printf("Hello from mbed -- FreeRTOS / cmd\n");
+    printf("Hello from mbed -- FreeRTOS / cmd\r\n");
     for( ;; ) {
         vTaskDelay( 1000 );
         xStatus = xQueueReceive( xQueue, &lReceivedValue, 1000 );
         if( xStatus == pdPASS ) {
-            printf( "Received = %ld\n", lReceivedValue );
+            printf( "\r\nReceived = %ld\r\n", (long)lReceivedValue );
         }
         led2 = !led2;
     }
@@ -62,16 +74,15 @@ int main( void ) {
 //    prvSetupHardware();
 
     pc.baud(115200);
+    pc.format(8, SerialBase::None, 1);
 
 //    printf("Hello from mbed -- FreeRTOS / cmd\n");
 
     /* --- APPLICATION TASKS CAN BE CREATED HERE --- */
 
     xQueue = xQueueCreate( 3, sizeof( int32_t ) );
-    
-    xTaskCreate( vTask1, "Task 1", 2*configMINIMAL_STACK_SIZE, NULL, 1, NULL );
-    xTaskCreate( vTask2, "Task 2", 2*configMINIMAL_STACK_SIZE, NULL, 2, NULL );
-    
+    xTaskCreate( vTask1, "Task 1", 4*configMINIMAL_STACK_SIZE, NULL, 1, NULL );
+    xTaskCreate( vTask2, "Task 2", 4*configMINIMAL_STACK_SIZE, NULL, 2, NULL );
     /* Start the created tasks running. */
     vTaskStartScheduler();
 
