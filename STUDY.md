@@ -19,6 +19,7 @@ The project's technical decisions and the reasons behind them, by topic. Updated
   - The venv must be activated in each new terminal (`source .venv/bin/activate`). Without it, `mbed` runs on Python 3.14 and fails with `cannot import name 'Mapping'`.
 - **`[Error] Compiler version mismatch: Have 14.2.1; expected ... < 7.0.0`** is printed on every build and can be ignored. The tools were written for GCC 6, the build still links, and `frtos.bin` is produced.
 - **The program folder is called `frtos`**, so Mbed CLI names the binary `frtos.bin`, the name the delivery requires.
+- **Line endings are LF everywhere.** The course files came with Windows line endings (CRLF), and lines pasted on Linux are LF, so files ended up mixed. Everything was converted to LF, and `.gitattributes` (`* text=auto eol=lf`) makes git store LF even when someone commits from Windows.
 
 ## 2. Architecture and work split
 
@@ -48,6 +49,12 @@ The board's USB connection also shows up on the PC as a serial port (`/dev/ttyAC
   - Only printable characters (32..126) are stored, so stray control characters never reach the parser.
 - **`fflush(stdout)` after the `Cmd> ` prompt.** newlib (the C library) buffers stdout by line: text is sent when a `\n` arrives. The prompt has no `\n`, so without the flush it would stay in the buffer until the next line.
 - **`strtok` also splits on `\r`**, so a stray `\r` never sticks to the last argument.
+- **Command interpreter (`monitor.cpp`).** `monitor()` loops forever: print `Cmd> `, read a line, split it into words with `strtok`. `sat 20 40` becomes `argc = 3`, `argv = {"sat", "20", "40"}`, the same convention as `main(argc, argv)` in C.
+  - `commands[]` is a table of `{function pointer, name, help}`. `monitor()` compares `argv[0]` with each name and calls the matching function through its pointer; `sos` prints the same table. This is table-driven dispatch: adding a command means writing a handler and adding one row, and the parser never changes. Every handler has the same signature `(int argc, char **argv)` so it fits in the table, even when it takes no arguments.
+  - `extern` in `monitor.cpp` declares handlers defined in `commands.cpp`; the linker joins them.
+- **`rp` (read parameters)** is run by the console itself. The spec allows commands to run "directly by the console task" or "through the interaction with specific tasks". `rp` only reads shared data, so it calls `config_get` and prints. `rt` will be different: a new temperature reading belongs to the temperature task, so the console will have to ask that task and wait for the reply.
+  - Copy first, print after. The mutex is held only for the 12-byte copy inside `config_get`; the `printf` (about 2.5 ms of UART time for that line) runs outside the critical section, so a higher-priority task never waits for the UART.
+  - `%u` with a `uint8_t`: in a variable-argument function like `printf`, types smaller than `int` are promoted to `int`. The values are never negative, so `%u` prints them correctly.
 - **Known issues, fixed in the next steps:**
   - `pc.getc()` polls: it loops until a character arrives, so the console task never blocks. Tasks at the same priority must time-slice with it, and tasks at a lower priority (including the idle task) never run.
   - `ARGVECSIZE` is 3 in `monitor.cpp`, so a line keeps at most 3 words including the command name. `sd d M Y` and `sc h m s` need 4.

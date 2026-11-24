@@ -19,6 +19,7 @@ extern char* my_fgets(char *, int, FILE *);
 +--------------------------------------------------------------------------*/ 
        void cmd_sos  (int, char** );
 extern void cmd_test (int, char** );
+extern void cmd_rp   (int, char** );
 
 /*-------------------------------------------------------------------------+
 | Variable and constants definition
@@ -32,7 +33,8 @@ struct  command_d {
   char* cmd_help;
 } const commands[] = {
   {cmd_sos,  "sos","                  help"},
-  {cmd_test, "test","<arg1> <arg2>    test command"}
+  {cmd_test, "test","<arg1> <arg2>    test command"},
+  {cmd_rp,   "rp","                   read parameters (pmon, tala)"}
 };
 
 #define NCOMMANDS  (sizeof(commands)/sizeof(struct command_d))
