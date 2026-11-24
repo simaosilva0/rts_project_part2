@@ -13,6 +13,8 @@ The project's technical decisions and the reasons behind them, by topic. Updated
 9. LCD manager task
 10. Clock task: periodic work on the RTC's second
 11. The I2C bus and the buzzer requests
+12. Task priorities and stubs
+13. Turning tasks on and off
 
 ## 1. Build environment
 
@@ -283,7 +285,87 @@ The last two shared interfaces, used by the parts: `i2c_bus.h`/`.cpp` (a mutex f
 
 ### The buzzer request queue
 
-- The spec gives the alarm sound to a specific task. Alarms come from two producers: the clock task (alarm clock, Part 2) and the temperature task (thresholds, Part 1). Both call `buzzer_alarm(ALARM_CLOCK)` or `buzzer_alarm(ALARM_TEMP)`, which puts a request in a 4-slot queue; the buzzer task takes requests and sounds for `tala` seconds.
+- The spec gives the alarm sound to a specific task. Alarms come from two producers: the clock task (alarm clock, Part 2) and the temperature task (thresholds, Part 1). Both call `buzzer_alarm(ALARM_CLOCK)` or `buzzer_alarm(ALARM_TEMP)`, which puts a request in a 4-slot queue of `uint8_t` (an `alarm_src_t`, or `REQ_MODE` from section 13); the buzzer task takes requests and sounds for `tala` seconds.
 - **A queue, not a semaphore:** each request carries which alarm it is, so Part 2 can decide what to do when alarms overlap. A semaphore only says that something happened.
 - **Never blocks (timeout 0).** The clock task must not stall on the second because the buzzer is busy. A full queue means 4 alarms are already waiting, so dropping one more loses nothing.
-- **Interfaces before tasks.** `buzzer_alarm` works before any buzzer task exists: requests queue up and, once the queue is full, are dropped. The parts can write their calls against interfaces that already compile.
+- **Interfaces before tasks.** `buzzer_alarm` works even when no task reads the queue: requests queue up and, once the queue is full, are dropped. The parts can write their calls against interfaces that already compile.
+
+## 12. Task priorities and stubs
+
+Every task of the system now exists. The parts' tasks are stubs in their own files (`temp.cpp`, `buzzer.cpp`, `bubble.cpp`, `hitbit.cpp`); each part only replaces the body.
+
+### Choosing priorities
+
+- **Rate Monotonic (RM):** for periodic tasks, the shorter the period, the higher the priority. A task due every 100 ms has less slack than one due every 5 s. Liu & Layland (1973) showed RM is the optimal fixed-priority order when each deadline equals the period.
+- **Deadline Monotonic (DM):** the general version for any task, periodic or event-driven: the shorter the required response time, the higher the priority.
+- **Hard vs. soft:** tasks whose lateness is harmless (display, human console) go to the bottom.
+
+### The scheme (`main.cpp`, one table of `PRIO_*` constants)
+
+| Prio | Task | Period / trigger | Reason |
+|---|---|---|---|
+| 4 | hitbit | LED rotation every ~100-300 ms; joystick press | shortest period; a press judged late (LED4 already moved) makes the game unfair |
+| 3 | bubble | ~100 ms | short period (RM) |
+| 3 | buzzer | alarm request; pots every ~100 ms in config sound mode | the alarm must start promptly; short polling period |
+| 3 | clock | 1 s, on the RTC second | short work; the alarm-clock check must happen on the second |
+| 2 | temp | `pmon` (≥ 1 s, default 5 s) or on demand | longest period of the periodic tasks (RM) |
+| 1 | lcd | messages | soft; below its producers so it batches |
+| 1 | console | human typing | soft; a person does not notice a few ms |
+| 0 | idle | nothing else ready | created by FreeRTOS |
+
+- **The LCD sits below its producers on purpose.** Producers run first, so when the LCD finally runs it finds several messages and draws them with one SPI transfer. Above them, it would preempt after each message and redraw every time.
+- **Equal priorities are fine here.** FreeRTOS time-slices equal-priority tasks only while they are ready at the same moment; these tasks run for microseconds to a millisecond and block, so they rarely overlap.
+- **Only 5 levels** (`configMAX_PRIORITIES = 5`, 0 taken by idle), so tasks are grouped by urgency.
+- **One table** keeps the urgency order of the whole system visible in seven lines.
+- **The console must stay below bubble and Hit Bit**: section 13 depends on it.
+
+### Checked task creation and the heap budget
+
+- `create_task()` wraps `xTaskCreate` and stops with `cannot create task <name>: out of heap` if the heap cannot hold the stack and TCB. Before, a failed creation was silent and only showed up as odd behaviour later. With `heap_1` nothing is freed, so a failure at startup means the design does not fit, and the message names the task.
+- **Stacks:** `STACK_PRINTF` (4x minimal = 520 words) for the console, which calls `printf`; `STACK_SMALL` (2x = 260 words) for the rest.
+- **Estimated heap use**, to be measured on the board:
+
+| Item | Bytes (approx.) |
+|---|---|
+| console stack | 2080 |
+| 6 small stacks | 6240 |
+| idle stack (130 words) | 520 |
+| 8 TCBs (~96 B each) | ~770 |
+| 3 queues (UART, LCD, buzzer) | ~340 |
+| 3 mutexes + 1 binary semaphore | ~300 |
+| **Total** | **~10.2 KB of 16 KB** |
+
+### The stubs
+
+- `temp` sleeps forever (a task must never return).
+- `buzzer` already drains its queue, the receive pattern Part 2 builds on.
+- `bubble` and `hitbit` are periodic skeletons with the on/off logic of section 13; `bubble` shows a centred bubble, the first real use of `lcd_show_bubble`.
+
+## 13. Turning tasks on and off
+
+`rts` shows BL, HB and CS; `adbl`, `adhb` and `adcs` change them.
+
+### Theory
+
+- **Three ways to stop a task:**
+
+| | How | Comes back | Here |
+|---|---|---|---|
+| Delete | `vTaskDelete` | no, must be created again | no: with `heap_1` the memory is never freed, so on/off cycles would leak until creation fails |
+| Block | waiting on a delay, queue or semaphore | when the event happens | what a task does between jobs |
+| Suspend | `vTaskSuspend` | only on `vTaskResume` | yes: "off until told otherwise" |
+
+  A suspended task keeps its stack and TCB and uses no CPU; the scheduler never picks it.
+- **Suspending another task from outside is dangerous.** The caller does not know where the task is in its code: it could freeze it while it holds the I2C mutex (the bus would stay locked and the temperature task would wait forever), or with Hit Bit's LEDs left on. Whatever was in progress stays half-done.
+- **Cooperative suspension.** The console only records the wish (`bl = 0` in the config). The task checks it at a safe point, the top of its loop, where it holds no mutex; it cleans up (hides the bubble, turns the LEDs off) and suspends itself with `vTaskSuspend(NULL)`. To turn it on, the console calls `vTaskResume(handle)`; the task continues after `vTaskSuspend(NULL)`, re-reads the config and runs. The cost is up to one period of latency (100 ms for the bubble).
+- **The lost wake-up race.** In "check a flag, then sleep", a wake-up that arrives between the check and the sleep is lost: the task reads `bl = 0`, the console sets `bl = 1` and calls `vTaskResume` (no effect, the task is not suspended yet), then the task suspends and nobody wakes it.
+  - It cannot happen here because of priorities: the console (1) runs only when no higher-priority task is ready, and between reading `bl` and `vTaskSuspend` the bubble (3) and Hit Bit (4) tasks never block, so the console cannot run in that window.
+  - The argument is fragile: giving the console a priority above these tasks would bring the race back. The robust alternative is a semaphore the task waits on, since a semaphore remembers a give that arrives early.
+
+### Decisions
+
+- **The handles** (`bubble_task`, `hitbit_task`) are defined in their modules, declared `extern` in their headers, and filled by `create_task(..., &handle)` in `main()`. Only the console uses them, for `vTaskResume`.
+- **`vTaskResume` on a task that is not suspended does nothing,** so `adbl 1` when already on is harmless.
+- **Initial states use the same path.** Hit Bit starts off (`HB = 0`): its first loop iteration reads `hb = 0` and suspends itself. No startup special case, as with the initial `A:` line.
+- **`lcd_hide_bubble()`** (new message `MSG_BUBBLE_OFF`) clears the bubble square when the bubble level turns off.
+- **Config sound is a mode of the buzzer task, not a task.** `adcs` stores `cs` and calls `buzzer_mode_changed()`, which puts `REQ_MODE` (0xFF) in the buzzer queue; the queue items became `uint8_t` so they can hold either an alarm source or this value. `REQ_MODE` carries no value: it means "wake up and re-read `cs`". The state lives in the config and the message is only a wake-up, so even if it were dropped (queue full), the task sees the right `cs` the next time it wakes. Same principle as the clock tick: the signal says when, the shared state says what.

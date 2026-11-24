@@ -22,6 +22,10 @@ extern void cmd_rdt  (int, char** );
 extern void cmd_sd   (int, char** );
 extern void cmd_rc   (int, char** );
 extern void cmd_sc   (int, char** );
+extern void cmd_rts  (int, char** );
+extern void cmd_adbl (int, char** );
+extern void cmd_adhb (int, char** );
+extern void cmd_adcs (int, char** );
 extern void cmd_todo (int, char** );
 
 /*-------------------------------------------------------------------------+
@@ -52,10 +56,10 @@ struct  command_d {
   {cmd_sat,  "sat",  "tl th  set temperature thresholds"},
   {cmd_adac, "adac", "1/0    alarm clock on/off"},
   {cmd_adat, "adat", "1/0    temperature alarm on/off"},
-  {cmd_todo, "rts",  "       read task state (BL, HB, CS)"},
-  {cmd_todo, "adbl", "1/0    bubble level on/off"},
-  {cmd_todo, "adhb", "1/0    Hit Bit on/off"},
-  {cmd_todo, "adcs", "1/0    config sound on/off"}
+  {cmd_rts, "rts",  "       read task state (BL, HB, CS)"},
+  {cmd_adbl, "adbl", "1/0    bubble level on/off"},
+  {cmd_adhb, "adhb", "1/0    Hit Bit on/off"},
+  {cmd_adcs, "adcs", "1/0    config sound on/off"}
 };
 
 #define NCOMMANDS  (sizeof(commands)/sizeof(struct command_d))

@@ -4,6 +4,9 @@
 #include "clock.h"
 #include "lcd.h"
 #include "shared.h"
+#include "buzzer.h"
+#include "bubble.h"
+#include "hitbit.h"
 
 /*-------------------------------------------------------------------------+
 | Argument helpers
@@ -258,4 +261,72 @@ void cmd_sc (int argc, char** argv)
   clock_set_time(h, m, s);
 
   printf("clock = %02d:%02d:%02d\n", h, m, s);
+}
+
+/*-------------------------------------------------------------------------+
+| Function: cmd_rts - read task state
++--------------------------------------------------------------------------*/
+void cmd_rts (int argc, char** argv)
+{
+  config_t c;
+
+  config_get(&c);
+  printf("bubble level: %s, Hit Bit: %s, config sound: %s\n",
+         c.bl ? "on" : "off", c.hb ? "on" : "off", c.cs ? "on" : "off");
+}
+
+/*-------------------------------------------------------------------------+
+| Function: cmd_adbl - bubble level on/off
++--------------------------------------------------------------------------*/
+void cmd_adbl (int argc, char** argv)
+{
+  config_t c;
+  int on;
+
+  if (!arg_count(argc, 1, "adbl 1/0") || !arg_int(argv[1], "value", 0, 1, &on))
+    return;
+  config_get(&c);
+  c.bl = on;
+  config_set(&c);
+  if (on)
+    vTaskResume(bubble_task);       /* off: the task suspends itself */
+
+  printf("bubble level %s\n", on ? "on" : "off");
+}
+
+/*-------------------------------------------------------------------------+
+| Function: cmd_adhb - Hit Bit on/off
++--------------------------------------------------------------------------*/
+void cmd_adhb (int argc, char** argv)
+{
+  config_t c;
+  int on;
+
+  if (!arg_count(argc, 1, "adhb 1/0") || !arg_int(argv[1], "value", 0, 1, &on))
+    return;
+  config_get(&c);
+  c.hb = on;
+  config_set(&c);
+  if (on)
+    vTaskResume(hitbit_task);       /* off: the task suspends itself */
+
+  printf("Hit Bit %s\n", on ? "on" : "off");
+}
+
+/*-------------------------------------------------------------------------+
+| Function: cmd_adcs - config sound on/off
++--------------------------------------------------------------------------*/
+void cmd_adcs (int argc, char** argv)
+{
+  config_t c;
+  int on;
+
+  if (!arg_count(argc, 1, "adcs 1/0") || !arg_int(argv[1], "value", 0, 1, &on))
+    return;
+  config_get(&c);
+  c.cs = on;
+  config_set(&c);
+  buzzer_mode_changed();
+
+  printf("config sound %s\n", on ? "on" : "off");
 }

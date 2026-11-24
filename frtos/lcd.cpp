@@ -8,7 +8,7 @@
 
 #define LCD_QUEUE_LEN 8
 
-typedef enum { MSG_CLOCK, MSG_ALARMS, MSG_TEMP, MSG_BUBBLE } msg_type_t;
+typedef enum { MSG_CLOCK, MSG_ALARMS, MSG_TEMP, MSG_BUBBLE, MSG_BUBBLE_OFF } msg_type_t;
 
 typedef struct {
     msg_type_t type;
@@ -73,6 +73,13 @@ void lcd_show_bubble(int dx, int dy)
     send(&msg);
 }
 
+void lcd_hide_bubble(void)
+{
+    lcd_msg_t msg;
+    msg.type = MSG_BUBBLE_OFF;
+    send(&msg);
+}
+
 /*-------------------------------------------------------------------------+
 | Drawing side: only the LCD task runs these
 +--------------------------------------------------------------------------*/
@@ -129,6 +136,10 @@ static void draw(const lcd_msg_t *msg)
         lcd.rect(LCD_BUBBLE_X, 0, 127, 31, 1);
         lcd.fillcircle(LCD_BUBBLE_X + 16 + clamp(msg->bubble.dx, LCD_BUBBLE_MAX),
                        16 + clamp(msg->bubble.dy, LCD_BUBBLE_MAX), 3, 1);
+        break;
+
+    case MSG_BUBBLE_OFF:
+        lcd.fillrect(LCD_BUBBLE_X, 0, 127, 31, 0);
         break;
     }
 }

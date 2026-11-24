@@ -238,6 +238,16 @@ Flash `frtos.bin`, open the terminal (`picocom -b 115200 --echo /dev/ttyACM0`) a
 | `sc 12 0 0` | the LCD shows `12:00:00` within a second |
 | `adac 1`, `adat 1`, `adac 0` | line 2: `A: C`, then `A: C T`, then `A:   T` (the `T` stays in place) |
 
+### Task states
+
+| Test | Expected |
+|---|---|
+| `rts` after reset | `bubble level: on, Hit Bit: off, config sound: off` |
+| `adbl 0`, then `adbl 1` | the bubble square disappears within 0.1 s, then comes back |
+| `adbl 1` when already on | `bubble level on`, nothing else changes |
+| `adhb 1`, `adcs 1`, then `rts` | both shown as `on` |
+| `adbl 2` | `value must be a number 0..1` |
+
 ### Still to write
 
 Tests for the parts not implemented yet, from the spec:
@@ -248,7 +258,6 @@ Tests for the parts not implemented yet, from the spec:
 - **LCD temperature line:** `T(C)= tt.t` shows the last reading.
 - **Bubble level:** the bubble follows the board's tilt on X and Y; `adbl 0`/`1` stops and restarts it.
 - **Hit Bit:** pattern rotating on LED1-4, the joystick centre clears a lit bit or adds one, a win blinks all 4 LEDs 3 times; `adhb 0`/`1`.
-- **Task states:** `rts` shows BL, HB and CS, initially 1, 0 and 0.
 
 
 ## Repository layout
@@ -263,7 +272,10 @@ frtos/              the application, built from txCmdFRTOS
   clock.cpp/.h        RTC access: read and set date/time
   lcd.cpp/.h          LCD manager task and its message interface
   i2c_bus.cpp/.h      mutex for the shared I2C bus (LM75B, MMA7660)
-  buzzer.cpp/.h       alarm request queue (buzzer task: Part 2)
+  buzzer.cpp/.h       alarm request queue and buzzer task (Part 2)
+  temp.cpp/.h         temperature task (Part 1)
+  bubble.cpp/.h       bubble level task (Part 3)
+  hitbit.cpp/.h       Hit Bit task (Part 3)
   C12832/             LCD driver library (course code)
   mbed_app.json       mbed settings (newline conversion)
   freertos-cm3/       FreeRTOS V9.0.0 and FreeRTOSConfig.h
