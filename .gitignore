@@ -22,3 +22,8 @@ mbed_settings.py
 materials/txCmdFRTOS.zip
 materials/tstLM75B.zip
 materials/tstRTC.zip
+
+# frtos/: mbed 2 library and bundled tools (~465 MB, copied from txCmdFRTOS.zip)
+frtos/mbed/
+frtos/.temp/
+frtos/.venv/

@@ -68,6 +68,51 @@ Ranges: day 1-31, month 1-12, year 1970-2037, h 0-23, m and s 0-59, tl and th 0-
 | 5 s | 3 s | 15 °C | 30 °C | 0 | 0 | 12:00:00 | 1 | 0 | 0 |
 
 
+## Work split
+
+The foundation comes first. It sets the architecture and the interfaces between modules, so the three parts after it can be written in parallel without touching each other's files.
+
+### Foundation (Simão Silva)
+
+- One `.cpp`/`.h` pair per module (`temp`, `alarm`, `buzzer`, `bubble`, `hitbit`, `lcd`, `clock`) plus `shared.h`.
+- A shared state struct (parameters, alarm settings, task states) set to the initial values above and protected by a mutex, with get/set helpers.
+- The I2C mutex, since the LM75B and the MMA7660 share the bus.
+- An LCD manager task that owns the LCD. Other tasks send it updates through a queue.
+- The buzzer request queue, so any task can ask for an alarm sound.
+- Every task created as a stub, with priorities and stack sizes chosen to fit the 16 KB heap.
+- RTC setup, time helpers, and `hh:mm:ss` on the LCD.
+- All 19 console commands registered. These are finished in the foundation, with range checks: `rdt`, `sd`, `rc`, `sc`, `rp`, `mmp`, `mta`, `rai`, `sac`, `sat`, `adac`, `adat`, `rts`, `adbl`, `adhb`, `adcs`.
+- The `A: C T` line on the LCD.
+
+The parts start once the foundation builds, shows the clock on the LCD and answers commands on the console.
+
+### Part 1: Temperature monitoring (Simão Silveira)
+
+- Temperature task: periodic reads every `pmon` seconds (none when `pmon = 0`) and on-demand reads requested by the console, with the value sent back to it.
+- Commands `rt`, `rmm` and `cmm`.
+- Max/min records with RTC timestamps.
+- RGB LED colour gradient between `tlow` and `thigh`.
+- Temperature alarm check against `[tlow, thigh]`, which sends a request to the buzzer queue.
+- `T(C)= tt.t` on the LCD.
+
+### Part 2: Alarms and sound (Isam Abbasi)
+
+- Alarm clock: compares the RTC with `ALAH:ALAM:ALAS` while `ALAC` is on.
+- Buzzer task: takes requests from its queue and drives the PWM for `tala` seconds.
+- Config sound mode (`adcs`): pot1 sets the PWM period and pot2 the duty cycle.
+- What happens when alarms overlap, for example a temperature alarm while the clock alarm is sounding.
+
+### Part 3: Bubble level and Hit Bit (Simão Silva)
+
+- Bubble level task: reads X/Y from the MMA7660 under the I2C mutex and draws the bubble on the right side of the LCD.
+- Hit Bit task: rotates the pattern on LED1-4, wakes on a joystick-centre interrupt (semaphore or task notification), handles hits and misses, and blinks all 4 LEDs 3 times on a win.
+- Suspend/resume for `adbl` and `adhb`, clearing the LEDs and the bubble area of the LCD when a task is turned off.
+
+### Report
+
+Each person writes the section on their own part. The foundation author writes the architecture, priorities and shared-resource section.
+
+
 ## Starting point: txCmdFRTOS
 
 `txCmdFRTOS.zip` is the base project. It contains:
@@ -112,16 +157,32 @@ These three zips are deliberately left out of the repo (see `.gitignore`). Each 
 
 ## Building and flashing
 
-Mbed CLI 1 with the GCC_ARM toolchain (`README_LabSTR` has the Windows lab setup):
+Mbed CLI 1 with the GCC_ARM toolchain (`README_LabSTR` has the Windows lab setup). The code is in `frtos/`.
+
+The mbed 2 library (`frtos/mbed/`, ~450 MB) and its build tools (`frtos/.temp/`) aren't in git. After a fresh clone, copy them from the zip:
 
 ```
-mbed target LPC1768
-mbed toolchain GCC_ARM
-mbed deploy                 # after adding new files
-mbed compile                # -> BUILD/LPC1768/GCC_ARM/<project>.bin
+unzip -q materials/txCmdFRTOS.zip -d /tmp/base
+cp -a /tmp/base/txCmdFRTOS/mbed /tmp/base/txCmdFRTOS/.temp frtos/
 ```
 
-Copy the `.bin` onto the `MBED` USB drive and reset the board. Rename it `frtos.bin` for delivery.
+The bundled tools are too old for current Python (they break on 3.10+), so build inside a Python 3.8 venv. One-time setup on Linux with `uv`:
+
+```
+cd frtos
+uv venv -p 3.8 .venv
+uv pip install -p .venv/bin/python pip mbed-cli jsonschema "pyelftools<0.30" -r .temp/tools/requirements.txt
+```
+
+Build:
+
+```
+cd frtos
+source .venv/bin/activate
+mbed compile -m LPC1768 -t GCC_ARM     # -> BUILD/LPC1768/GCC_ARM/frtos.bin
+```
+
+Copy `frtos.bin` onto the `MBED` USB drive and reset the board. Since the folder is called `frtos`, the binary already has the name required for delivery.
 
 Serial console: 115200 baud, local echo on, CR added to every LF. On Linux the board is `/dev/ttyACM0` (for example `picocom -b 115200 --echo --omap crlf /dev/ttyACM0`), so `mbedWinSerial` isn't needed.
 
@@ -129,7 +190,10 @@ Serial console: 115200 baud, local echo on, CR added to every LF. On Linux the b
 ## Repository layout
 
 ```
+frtos/              the application, built from txCmdFRTOS
+  main.cpp            task creation and startup
+  monitor.cpp         command interpreter (course code)
+  comando.cpp         console command handlers
+  freertos-cm3/       FreeRTOS V9.0.0 and FreeRTOSConfig.h
 materials/          spec, FreeRTOS manuals, lab notes and course examples
 ```
-
-Source code will go in its own folder, built from `txCmdFRTOS`.
