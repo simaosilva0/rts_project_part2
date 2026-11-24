@@ -16,28 +16,22 @@ extern void monitor(void);
 +--------------------------------------------------------------------------*/ 
 char* my_fgets (char* ln, int sz, FILE* f)
 {
-//  fgets(line, MAX_LINE, stdin);
-//  pc.gets(line, MAX_LINE);
   int i = 0;
   char c;
   while (i < sz-1) {
       c = pc.getc();
-      if (c == '\r' || c == '\n') {          // end of line: echo CRLF, don't store terminator
-          pc.putc('\r'); pc.putc('\n');
+      if (c == '\r' || c == '\n') {   /* Enter: end of line */
+          printf("\n");
           break;
       }
-      if ((c == 0x7f || c == '\b') && i > 0) {   // backspace
-          i--;
-          pc.putc('\b'); pc.putc(' '); pc.putc('\b');
+      if (c == '\b' || c == 0x7f) {   /* backspace: drop the last char */
+          if (i > 0) i--;
           continue;
       }
-      if (c >= 32 && c < 127) {              // printable only: echo and store
-          pc.putc(c);
+      if (c >= 32 && c < 127)         /* keep printable chars only */
           ln[i++] = c;
-      }
   }
   ln[i] = '\0';
-
   return ln;
 }
 
@@ -58,12 +52,12 @@ int32_t lReceivedValue;
 BaseType_t xStatus;
 
     led2 = 1;
-    printf("Hello from mbed -- FreeRTOS / cmd\r\n");
+    printf("Hello from mbed -- FreeRTOS / cmd\n");
     for( ;; ) {
         vTaskDelay( 1000 );
         xStatus = xQueueReceive( xQueue, &lReceivedValue, 1000 );
         if( xStatus == pdPASS ) {
-            printf( "\r\nReceived = %ld\r\n", (long)lReceivedValue );
+            printf( "\nReceived = %ld\n", (long)lReceivedValue );
         }
         led2 = !led2;
     }

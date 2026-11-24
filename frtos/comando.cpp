@@ -30,7 +30,7 @@ void cmd_test (int argc, char** argv)
 
   /* exemplo -- escreve argumentos */
   for (i=0; i<argc; i++)
-    printf ("\r\nargv[%d] = %s", i, argv[i]);
+    printf ("\nargv[%d] = %s", i, argv[i]);
 }
 
 /*-------------------------------------------------------------------------+
@@ -42,12 +42,12 @@ int32_t lValueToSend;
 BaseType_t xStatus;
 
     if (argc == 2) {
-        printf ("\r\nmsg: %s\r\n", argv[1]);
+        printf ("\nmsg: %s\n", argv[1]);
         lValueToSend = atoi(argv[1]);
         xStatus = xQueueSend( xQueue, &lValueToSend, 0 );
     }
     else {
-        printf ("\r\nwrong number of arguments!\r\n");
+        printf ("\nwrong number of arguments\n");
     }
 }
 

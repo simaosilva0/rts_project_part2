@@ -184,7 +184,7 @@ mbed compile -m LPC1768 -t GCC_ARM     # -> BUILD/LPC1768/GCC_ARM/frtos.bin
 
 Copy `frtos.bin` onto the `MBED` USB drive and reset the board. Since the folder is called `frtos`, the binary already has the name required for delivery.
 
-Serial console: 115200 baud, local echo on, CR added to every LF. On Linux the board is `/dev/ttyACM0` (for example `picocom -b 115200 --echo --omap crlf /dev/ttyACM0`), so `mbedWinSerial` isn't needed.
+Serial console: 115200 baud, local echo on. The board already sends `\r\n` (`frtos/mbed_app.json`), so the terminal's "CR on every LF" option makes no difference. On Linux the board is `/dev/ttyACM0` (`picocom -b 115200 --echo /dev/ttyACM0`), so `mbedWinSerial` isn't needed.
 
 
 ## Repository layout

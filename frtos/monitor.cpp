@@ -25,8 +25,8 @@ extern void cmd_send (int, char** );
 /*-------------------------------------------------------------------------+
 | Variable and constants definition
 +--------------------------------------------------------------------------*/ 
-const char TitleMsg[] = "\r\n Application Control Monitor\r\n";
-const char InvalMsg[] = "\r\nInvalid command!";
+const char TitleMsg[] = "\n Application Control Monitor\n";
+const char InvalMsg[] = "\nInvalid command!";
 
 struct  command_d {
   void  (*cmd_fnct)(int, char**);
@@ -50,9 +50,9 @@ void cmd_sos (int argc, char **argv)
 {
   int i;
 
-  printf("%s\r\n", TitleMsg);
+  printf("%s\n", TitleMsg);
   for (i=0; i<NCOMMANDS; i++)
-    printf("%s %s\r\n", commands[i].cmd_name, commands[i].cmd_help);
+    printf("%s %s\n", commands[i].cmd_name, commands[i].cmd_help);
 }
 
 /*-------------------------------------------------------------------------+
@@ -87,9 +87,9 @@ void monitor (void)
   static char *argv[ARGVECSIZE+1], *p;
   int argc, i;
 
-  printf("%s Type sos for help\r\n", TitleMsg);
+  printf("%s Type sos for help\n", TitleMsg);
   for (;;) {
-    printf("\r\nCmd> ");
+    printf("\nCmd> ");
     fflush(stdout);
     /* Reading and parsing command line  ----------------------------------*/
     if ((argc = my_getline(argv, ARGVECSIZE)) > 0) {
