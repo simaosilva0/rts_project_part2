@@ -7,6 +7,7 @@ The project's technical decisions and the reasons behind them, by topic. Updated
 3. Console I/O
 4. Tasks, preemption and startup
 5. Shared configuration and mutual exclusion
+6. Interrupt-driven console input
 
 ## 1. Build environment
 
@@ -43,7 +44,7 @@ The board's USB connection also shows up on the PC as a serial port (`/dev/ttyAC
   - New lines are fixed on the board by one mbed setting in `frtos/mbed_app.json`: `platform.stdio-convert-newlines: true`. mbed's `_write` (`mbed_retarget.cpp`) then sends `\r\n` for each `\n` written to stdout. It remembers the previous character, so a `\r\n` already in a string does not become `\r\r\n`. All code writes plain `\n`.
   - An earlier commit had moved both jobs into the code (the board echoing every key, `\r\n` in every string). It looked right on a terminal without echo, but would print every key twice in the lab, and every future `printf` would have to remember `\r\n`.
 - **Terminal:** `picocom -b 115200 --echo /dev/ttyACM0`. `--echo` is local echo. No mapping option is needed, since the board sends `\r\n`.
-- **`my_fgets` (`main.cpp`)** reads one line character by character with `pc.getc()`:
+- **`my_fgets` (`console.cpp`)** reads one line, one character at a time from the receive queue (section 6):
   - Enter (`\r` or `\n`) ends the line and prints `\n`. With local echo, the terminal only echoes the carriage return, so without this newline the command's output would overwrite the line just typed.
   - Backspace (`\b` or `0x7f`; terminals send either) removes the last character from the buffer. Only the board can do this, since the terminal can erase the character on the screen but not in the board's buffer. Otherwise `tset` + 3 backspaces + `est` would reach the parser as `tsetest`.
   - Only printable characters (32..126) are stored, so stray control characters never reach the parser.
@@ -55,9 +56,7 @@ The board's USB connection also shows up on the PC as a serial port (`/dev/ttyAC
 - **`rp` (read parameters)** is run by the console itself. The spec allows commands to run "directly by the console task" or "through the interaction with specific tasks". `rp` only reads shared data, so it calls `config_get` and prints. `rt` will be different: a new temperature reading belongs to the temperature task, so the console will have to ask that task and wait for the reply.
   - Copy first, print after. The mutex is held only for the 12-byte copy inside `config_get`; the `printf` (about 2.5 ms of UART time for that line) runs outside the critical section, so a higher-priority task never waits for the UART.
   - `%u` with a `uint8_t`: in a variable-argument function like `printf`, types smaller than `int` are promoted to `int`. The values are never negative, so `%u` prints them correctly.
-- **Known issues, fixed in the next steps:**
-  - `pc.getc()` polls: it loops until a character arrives, so the console task never blocks. Tasks at the same priority must time-slice with it, and tasks at a lower priority (including the idle task) never run.
-  - `ARGVECSIZE` is 3 in `monitor.cpp`, so a line keeps at most 3 words including the command name. `sd d M Y` and `sc h m s` need 4.
+- **Known issue, fixed in the next step:** `ARGVECSIZE` is 3 in `monitor.cpp`, so a line keeps at most 3 words including the command name, and `sd d M Y` and `sc h m s` need 4.
 
 ## 4. Tasks, preemption and startup
 
@@ -120,3 +119,37 @@ The board's USB connection also shows up on the PC as a serial port (`/dev/ttyAC
 - **Single writer: only the console calls `config_set`.** Changing one field is get → change → set. Two writers doing this at once would each copy, change different fields, and the second `set` would overwrite the first one's change (a lost update). The mutex does not prevent that, because `get` and `set` are locked separately; one writer rules it out. The rule is written in `shared.h`.
 - **`uint8_t` fields.** Every range fits in 0..255, so the struct is 12 bytes and the type documents the range. It is not faster than `int` on a 32-bit CPU.
 - **`config_init()` in `main()`, before the scheduler, with its result checked.** The mutex must exist before any task calls `config_get`. No task runs yet, so filling `cfg` without the lock is safe. `xSemaphoreCreateMutex()` allocates from the FreeRTOS heap and returns `NULL` when it is full; with `heap_1` nothing is ever freed, so a failure means the design does not fit, and `main()` stops with a message.
+
+## 6. Interrupt-driven console input
+
+`console.h`/`console.cpp` hold the console module: the UART object, the receive queue, the receive ISR, `my_fgets` and the console task. `main.cpp` only builds the system (`console_init()`, `config_init()`, create the task, start the scheduler); every module follows the same pattern with its own `_init()`.
+
+### Theory
+
+- **Polling vs. interrupts.** The old `pc.getc()` waited with `while (!serial_readable(obj));`, asking the UART millions of times per second whether a character had arrived. A task stuck in that loop is always ready and never blocks, so every task at a lower priority, including the idle task, never runs, and tasks at the same priority must time-slice with a loop doing nothing useful. With an interrupt, the UART hardware signals the CPU when a character arrives; the CPU pauses whatever runs, executes the ISR (Interrupt Service Routine) and then continues. Nobody spends CPU time waiting.
+- **ISR rules.** An ISR interrupts everything, even the highest-priority task, so it must be short, must never block (it is not a task and cannot sleep: no mutex, no `vTaskDelay`, no `printf`), and may only call the `...FromISR` FreeRTOS functions. These never block and report whether a task switch is needed instead of switching themselves.
+- **Deferred processing.** The ISR does the minimum (take the character out of the UART) and a task does the real work (build the line, run the command). This is the most common pattern in real-time systems.
+- **The queue between them.** A FreeRTOS queue is a FIFO protected by the kernel, so the ISR can add while the task removes without a race. A task can block on it: `xQueueReceive(rx_queue, &c, portMAX_DELAY)` sleeps, using no CPU, until a character arrives. That one line replaces the polling loop.
+- **`woken` and `portYIELD_FROM_ISR`.** When `xQueueSendFromISR` wakes a task with a higher priority than the one interrupted, it sets `woken = pdTRUE`. `portYIELD_FROM_ISR(woken)` then requests a task switch for when the ISR ends.
+  - How: the macro (`portmacro.h`) only writes bit 28 of the ICSR register at `0xE000ED04`, which makes the PendSV exception pending. PendSV is an interrupt that only software triggers, and FreeRTOS gives it the least urgent priority (31), so it runs only after every other ISR has returned.
+  - The PendSV handler (`xPortPendSVHandler`, `port.c`) is the context switch. On exception entry the hardware has already pushed r0-r3, r12, LR, PC and xPSR onto the current task's stack; the handler pushes r4-r11, stores the stack pointer in the task's TCB, calls `vTaskSwitchContext()` to pick the highest-priority ready task, loads that task's stack pointer, pops r4-r11 and returns from the exception. The hardware pops the rest, including the PC, so the CPU continues in the new task where it last stopped (here, inside `xQueueReceive`, holding the new character).
+  - The Cortex-M3 goes from the ending ISR straight into the pending PendSV without returning to the task in between (tail-chaining).
+  - Without the macro, the woken task is ready but the ISR returns to the interrupted task. The switch then waits for the next tick (up to 1 ms; the tick ISR sets the same PendSV bit) or for the running task to block. The macro changes how soon the task runs, not whether it runs. Every task switch in FreeRTOS (tick, `taskYIELD()`, a task blocking or waking another) goes through PendSV.
+- **Interrupt priorities on the Cortex-M3.** The NVIC gives each interrupt a priority 0..31 on the LPC1768 (5 bits); a lower number is more urgent, the opposite of task priorities. FreeRTOS splits the range with `configMAX_SYSCALL_INTERRUPT_PRIORITY` (5 here):
+
+| NVIC priority | May call FreeRTOS `FromISR` functions | Masked by FreeRTOS critical sections |
+|---|---|---|
+| 0..4 | no | no (always run immediately) |
+| 5..31 | yes | yes |
+
+  When the kernel changes its ready and blocked lists it masks interrupts 5..31 for a moment. An ISR at 0..4 is never masked, so if it called FreeRTOS it could change those lists while the kernel is halfway through, corrupting them and crashing the system later at a random point. This port has no `configASSERT` to catch that.
+
+### Decisions in `console.cpp`
+
+- **`NVIC_SetPriority(UART0_IRQn, 6)`.** mbed leaves every interrupt at priority 0, the forbidden range for an ISR that calls `xQueueSendFromISR`. Any value 5..31 works; 6 leaves room for something more urgent later.
+- **`RawSerial`, not `Serial`.** `Serial::getc()` reads through the C library's `FILE` layer (buffers, internal state), which is not safe in an ISR. `RawSerial::getc()` reads the UART register directly; mbed provides it for interrupt use. `printf` still works through mbed's own stdio path to the same UART. Creating the object on the stdio pins marks the stdio UART as initialized (`serial_api.c`), so the first `printf` does not re-initialize the UART and switch the receive interrupt off.
+- **The ISR drains the UART in a `while (pc.readable())` loop.** Reading the data register clears the interrupt; an ISR that returned without reading would be entered again immediately, forever. The loop also collects characters that arrived close together.
+- **A 32-character queue, characters dropped when full.** An ISR must never wait, so `xQueueSendFromISR` gives up on a full queue. A line is at most 50 characters and the console empties the queue as fast as characters arrive, so in practice nothing is lost.
+- **The interrupt is enabled in `console_init()`, before the scheduler.** FreeRTOS keeps interrupts 5..31 masked from the first `xTaskCreate` until the scheduler starts (`uxCriticalNesting` starts at `0xaaaaaaaa` in `port.c`), so the ISR cannot run before the queue and the console task exist.
+- **`console_init()` runs before `config_init()`,** so the baud rate is already set if the error `printf` is needed.
+- **Output is still polled.** `printf` waits for the UART on every character (about 87 µs each), and the console task keeps the CPU while it prints. Acceptable because only the console prints; an interrupt-driven transmit buffer would remove it if it ever matters.
