@@ -130,6 +130,7 @@ The foundation is done: every task exists, and each part only replaces the body 
 - Don't call `vTaskDelete`, and don't suspend another task; tasks suspend themselves (section 13).
 - New ISRs: NVIC priority 6, only `...FromISR` calls, then `portYIELD_FROM_ISR` (section 6).
 - A new console command: write the handler in `commands.cpp`, then change its row in `monitor.cpp` from `cmd_todo` to it.
+- Stack overflows stop the board with `FATAL: stack overflow in task <name>`. Run `stk` after testing your part to check its stack margin (section 14).
 
 **Part 1 (temperature):** `temp.cpp` (`vTempTask`, priority 2) and the `rt`, `rmm`, `cmm` handlers. To design: how `rt` asks the task for a reading and gets the reply, and how the task wakes early when `mmp` changes `pmon` (section 7). `LM75B::read()` returns a `float`; convert it to tenths. RGB LED on p23/p24/p25.
 
@@ -227,7 +228,7 @@ Flash `frtos.bin`, open the terminal (`picocom -b 115200 --echo /dev/ttyACM0`) a
 | Test | Expected |
 |---|---|
 | reset the board | `Application Control Monitor`, `Type sos for help`, `Cmd>` |
-| `sos` | 21 commands in two aligned columns, no staircase lines |
+| `sos` | 22 commands in two aligned columns, no staircase lines |
 | `tset`, 3 backspaces, `est`, Enter | runs as `test` |
 | `test a b c` | `argv[0]` to `argv[3]` |
 | `xyz` | `Invalid command!` |
@@ -279,6 +280,13 @@ Flash `frtos.bin`, open the terminal (`picocom -b 115200 --echo /dev/ttyACM0`) a
 | `adhb 1`, `adcs 1`, then `rts` | both shown as `on` |
 | `adbl 2` | `value must be a number 0..1` |
 
+### Memory
+
+| Test | Expected |
+|---|---|
+| `stk` | 8 tasks (`console`, `lcd`, `clock`, `temp`, `buzzer`, `bubble`, `hitbit`, `IDLE`) with their priority and stack left, then `free heap: N of 16384 bytes` |
+| `stk` after using every command and toggle | no task with stack left near 0 |
+
 ### Still to write
 
 Tests for the parts not implemented yet, from the spec:
@@ -304,6 +312,7 @@ frtos/              the application, built from txCmdFRTOS
   lcd.cpp/.h          LCD manager task and its message interface
   i2c_bus.cpp/.h      mutex for the shared I2C bus (LM75B, MMA7660)
   buzzer.cpp/.h       alarm request queue and buzzer task (Part 2)
+  hooks.cpp           FreeRTOS stack-overflow and out-of-heap hooks
   temp.cpp/.h         temperature task (Part 1)
   bubble.cpp/.h       bubble level task (Part 3)
   hitbit.cpp/.h       Hit Bit task (Part 3)

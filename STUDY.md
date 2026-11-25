@@ -15,6 +15,7 @@ The project's technical decisions and the reasons behind them, by topic. Updated
 11. The I2C bus and the buzzer requests
 12. Task priorities and stubs
 13. Turning tasks on and off
+14. Stack overflow detection and memory measurement
 
 ## 1. Build environment
 
@@ -369,3 +370,27 @@ Every task of the system now exists. The parts' tasks are stubs in their own fil
 - **Initial states use the same path.** Hit Bit starts off (`HB = 0`): its first loop iteration reads `hb = 0` and suspends itself. No startup special case, as with the initial `A:` line.
 - **`lcd_hide_bubble()`** (new message `MSG_BUBBLE_OFF`) clears the bubble square when the bubble level turns off.
 - **Config sound is a mode of the buzzer task, not a task.** `adcs` stores `cs` and calls `buzzer_mode_changed()`, which puts `REQ_MODE` (0xFF) in the buzzer queue; the queue items became `uint8_t` so they can hold either an alarm source or this value. `REQ_MODE` carries no value: it means "wake up and re-read `cs`". The state lives in the config and the message is only a wake-up, so even if it were dropped (queue full), the task sees the right `cs` the next time it wakes. Same principle as the clock tick: the signal says when, the shared state says what.
+
+## 14. Stack overflow detection and memory measurement
+
+`hooks.cpp` holds the FreeRTOS error hooks; the debug command `stk` (not in the spec) prints each task's unused stack and the free heap.
+
+### Theory
+
+- **Why a stack overflow is so dangerous in an RTOS.** Each task has its own fixed-size stack from the FreeRTOS heap, holding its local variables, return addresses and saved registers. A task that needs more (deep calls, a large local array, a heavy `printf`) writes past the end. The Cortex-M3 here has no MMU, so nothing stops it: it overwrites whatever is next in memory, often another task's stack or TCB. The overflowing task may keep working while a different task crashes later, somewhere unrelated.
+- **Detection (`configCHECK_FOR_STACK_OVERFLOW`)** runs when a task is switched out:
+  - Method 1: is the stack pointer outside the task's stack? Catches only a task overflowing at that moment.
+  - Method 2 (used here): method 1, plus a pattern check. At creation every stack is filled with `0xA5`; at each switch the kernel checks that the last 16 bytes still hold it. Overwritten means the task went past its end at some point, even if its stack pointer has since come back.
+  - On failure the kernel calls `vApplicationStackOverflowHook` with the task's name.
+  - Limits: it detects, it does not prevent (memory may already be corrupted, so the only safe reaction is to stop); it only checks at context switches, so an overflow that never touches the last 16 bytes can be missed; and it adds a little time to every switch.
+- **High-water mark.** Because stacks start filled with `0xA5`, FreeRTOS can count how many words at the far end were never touched: the least free stack the task has ever had. `uxTaskGetSystemState` returns it for every task (`usStackHighWaterMark`). Near 0: the task came close to overflowing. Large: the stack can be smaller.
+
+### Decisions
+
+- **Method 2** in `FreeRTOSConfig.h` (the only config file FreeRTOS includes; `FreeRTOSConfig_b.h`, `_v7.h` and `_v9.h` are spare versions from the course that nothing includes).
+- **`configUSE_MALLOC_FAILED_HOOK = 1`:** `pvPortMalloc` calls `vApplicationMallocFailedHook` when the heap is full. `create_task` and the `_init()` checks already catch failures at startup; the hook also covers any later allocation.
+- **Both hooks print and stop.** `fatal()` disables interrupts, prints `FATAL: ...` and loops forever, so the corruption cannot spread and the message stays on screen.
+- **`raw_puts` instead of `printf`.** When a hook runs, the system is already broken, and the stack hook runs inside the kernel's context switch. `printf` needs plenty of stack and the C library's internal state, either of which may be damaged. `raw_puts` waits for `LSR` bit 5 (transmitter empty) and writes each byte to `THR`: no interrupts, no library, almost no stack. It writes its own `\r\n` because it bypasses mbed's newline conversion.
+- **`extern "C"` around the hooks.** C++ mangles function names, encoding the parameter types in the symbol (`vApplicationMallocFailedHook()` becomes something like `_Z28vApplicationMallocFailedHookv`) so that functions can be overloaded. FreeRTOS is C and calls the plain names; without `extern "C"` the link fails with "undefined reference". The built `frtos.elf` shows both hooks under their plain names.
+- **`stk` uses a static `TaskStatus_t` array, not `vTaskList()`.** `vTaskList` allocates a temporary array and frees it; with `heap_1` freeing does nothing, so every call would leak about 350 bytes until the heap ran out. The static array (10 x 36 bytes) is allocated once and stays off the console's stack. Library functions have to be checked against the heap scheme before use.
+- **Sizing procedure (on the board):** run every feature (all commands, alarms, on/off toggles, and later the parts' code), run `stk`, keep a margin of about 25% or at least ~50 words per task for rare paths, then shrink stacks with large margins and grow any close to 0. `free heap` replaces the ~10.2 KB estimate of section 12. The numbers change as the parts are written, so the final sizing is done with all the real code in.

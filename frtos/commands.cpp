@@ -7,6 +7,7 @@
 #include "buzzer.h"
 #include "bubble.h"
 #include "hitbit.h"
+#include "task.h"
 
 /*-------------------------------------------------------------------------+
 | Argument helpers
@@ -329,4 +330,24 @@ void cmd_adcs (int argc, char** argv)
   buzzer_mode_changed();
 
   printf("config sound %s\n", on ? "on" : "off");
+}
+
+/*-------------------------------------------------------------------------+
+| Function: cmd_stk - stack and heap usage (debug, not in the spec)
++--------------------------------------------------------------------------*/
+
+#define MAX_TASKS 10
+
+void cmd_stk (int argc, char** argv)
+{
+  static TaskStatus_t st[MAX_TASKS];     /* static: 10 x 36 bytes, not on the stack */
+  UBaseType_t n, i;
+
+  n = uxTaskGetSystemState(st, MAX_TASKS, NULL);
+  printf("task       prio  stack left (words)\n");
+  for (i = 0; i < n; i++)
+    printf("%-10s %4u  %5u\n", st[i].pcTaskName,
+           (unsigned)st[i].uxCurrentPriority, (unsigned)st[i].usStackHighWaterMark);
+  printf("free heap: %u of %u bytes\n",
+         (unsigned)xPortGetFreeHeapSize(), (unsigned)configTOTAL_HEAP_SIZE);
 }
