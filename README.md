@@ -292,6 +292,15 @@ Flash `frtos.bin`, open the terminal (`picocom -b 115200 --echo /dev/ttyACM0`) a
 | tilt the board while typing commands on the console | the bubble keeps moving, no freeze |
 | `adbl 0`, tilt the board, `adbl 1` | the bubble comes back directly at the new tilt, without sliding from the old place |
 
+### Hit Bit
+
+| Test | Expected |
+|---|---|
+| `adhb 1` | LED1 and LED3 light up and move one step toward LED4 every 0.2 s, wrapping from LED4 back to LED1 |
+| watch the LEDs for a few seconds | a steady beat, no step faster or slower than the others |
+| `adhb 0` | all 4 LEDs go off and stay off |
+| `adhb 0`, wait 10 s, `adhb 1` | a new game starts from LED1 and LED3 at the normal speed, no burst of fast steps |
+
 ### Memory
 
 | Test | Expected |
@@ -307,7 +316,7 @@ Tests for the parts not implemented yet, from the spec:
 - **Temperature:** periodic reads every `pmon` s, none when `pmon = 0`; `rt` works even when `pmon = 0`; `rmm`/`cmm` with timestamps; RGB LED blue below `tlow`, red above `thigh`, graded in between; an alarm outside `[tlow, thigh]` when `ALAT = 1`.
 - **Buzzer:** sounds for `tala` s on each alarm; config sound mode (`adcs 1`) changes the PWM period with pot1 and the duty cycle with pot2.
 - **LCD temperature line:** `T(C)= tt.t` shows the last reading.
-- **Hit Bit:** pattern rotating on LED1-4, the joystick centre clears a lit bit or adds one, a win blinks all 4 LEDs 3 times; `adhb 0`/`1`.
+- **Hit Bit:** the joystick centre clears a lit bit or adds one; a win blinks all 4 LEDs 3 times.
 
 
 ## Repository layout

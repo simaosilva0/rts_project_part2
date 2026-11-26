@@ -17,6 +17,7 @@ The project's technical decisions and the reasons behind them, by topic. Updated
 13. Turning tasks on and off
 14. Stack overflow detection and memory measurement
 15. Bubble level
+16. Hit Bit
 
 ## 1. Build environment
 
@@ -428,3 +429,24 @@ Every task of the system now exists. The parts' tasks are stubs in their own fil
 - **The bubble functions return `pdPASS`/`pdFAIL`.** The LCD functions drop a message when the queue is full (section 9). With send-on-change, a dropped update on a still board would never be repeated and the old position would stay on screen. So `lcd_show_bubble` reports whether the message was queued, and the task updates `shown_x`/`shown_y` and `drawn` only on success; after a drop the next period still sees a change and sends again. State is recorded as done only once it has been done. The other `lcd_show_*` functions ignore the result, because their next update comes anyway.
 - **A dropped hide is retried from the top of the loop.** If `lcd_hide_bubble()` fails, the task waits 10 ms (`BUBBLE_RETRY`) and starts the loop again, which re-reads `bl`. A `while` loop that retried and then suspended would break the lost wake-up argument of section 13: during its `vTaskDelay` the console could set `bl = 1` and call `vTaskResume` on a task that is not suspended yet, and the task would then suspend for good. As it is, the task still never blocks between reading `bl` and `vTaskSuspend`. `drawn = false` before suspending makes the first update after `adbl 1` always go out.
 - **`read_tilt()`** holds the lock, the read, the unlock and the sign conversion, so the bus rule is easy to check and the loop reads as read, store, average, show if changed.
+
+## 16. Hit Bit
+
+`hitbit.cpp` runs the game on LED1-4. A pattern of lit LEDs (the bits) moves one step toward LED4 every 200 ms, and a bit leaving LED4 comes back on LED1. Pressing the joystick centre while LED4 is lit removes that bit; pressing while it is off adds one. Removing every bit is a win, shown by blinking all 4 LEDs 3 times. So far the task rotates the pattern; the button and the win come next.
+
+### Theory
+
+- **Strictly periodic tasks.** `vTaskDelay(T)` waits T from the moment it is called, so the period is T plus the run time plus any preemption, and it varies. `vTaskDelayUntil(&last_wake, T)` wakes at `last_wake + T` and then adds exactly T to `last_wake`, so the wake times stay on fixed multiples of the period.
+- **The catch-up trap.** If `last_wake + T` is already in the past, `vTaskDelayUntil` does not block: it returns at once and advances `last_wake` by one period. A task that was suspended for a long time would therefore run its loop many times back to back until `last_wake` caught up with the tick count.
+
+### Decisions
+
+- **The game state is one 4-bit number,** bit 0 = LED1 to bit 3 = LED4, written in binary (`0b0101` = LED1 and LED3). Every game action is then a bit operation: rotate, test `pattern & LED4_BIT`, clear a bit, set a bit, and a win is `pattern == 0`.
+- **`BusOut leds(LED1, LED2, LED3, LED4)`** groups the 4 pins into one number with the first pin as bit 0, the same layout as the state, so `leds = pattern` shows it with no conversion.
+- **A rotation, not a shift.** `rotate()` remembers whether LED4 was lit, shifts left, masks to 4 bits and puts that bit back on LED1. Bits only disappear when they are hit.
+- **The bits move toward LED4,** so the player can see one coming and time the press.
+- **`vTaskDelayUntil` for the rotation.** The player predicts when a bit reaches LED4, so the beat must be steady. `last_wake` also marks where each period starts, which the button handling needs when a press wakes the task partway through a period.
+- **`last_wake` is reset after `vTaskSuspend` returns,** so `adhb 1` after a long pause restarts the beat from now instead of spinning through the missed periods.
+- **Turning the game off** sets the LEDs to 0 before suspending, so they are not left frozen, and resets the pattern to `HITBIT_START`, so `adhb 1` starts a new game.
+- **No mutex on the LEDs.** Only this task uses LED1-4, so they are not a shared resource; the `BusOut` object is `static`, private to `hitbit.cpp`.
+- **Period 200 ms.** That is how long a bit stays on LED4, the press window. It is a `#define` to tune on the board.
