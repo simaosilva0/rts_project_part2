@@ -98,9 +98,14 @@ static void clear_line(int y)
     lcd.fillrect(0, y, LCD_BUBBLE_X - 2, y + 8, 0);
 }
 
+/* Limit v to the range -max..max. */
 static int clamp(int v, int max)
 {
-    return (v > max) ? max : (v < -max) ? -max : v;
+    if (v > max)
+        return max;
+    if (v < -max)
+        return -max;
+    return v;
 }
 
 static void draw(const lcd_msg_t *msg)
@@ -134,8 +139,7 @@ static void draw(const lcd_msg_t *msg)
     case MSG_BUBBLE:
         lcd.fillrect(LCD_BUBBLE_X, 0, 127, 31, 0);
         lcd.rect(LCD_BUBBLE_X, 0, 127, 31, 1);
-        lcd.fillcircle(LCD_BUBBLE_X + 16 + clamp(msg->bubble.dx, LCD_BUBBLE_MAX),
-                       16 + clamp(msg->bubble.dy, LCD_BUBBLE_MAX), 3, 1);
+        lcd.fillcircle(LCD_BUBBLE_X + 16 + clamp(msg->bubble.dx, LCD_BUBBLE_MAX), 16 + clamp(msg->bubble.dy, LCD_BUBBLE_MAX), 3, 1);
         break;
 
     case MSG_BUBBLE_OFF:

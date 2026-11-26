@@ -280,6 +280,15 @@ Flash `frtos.bin`, open the terminal (`picocom -b 115200 --echo /dev/ttyACM0`) a
 | `adhb 1`, `adcs 1`, then `rts` | both shown as `on` |
 | `adbl 2` | `value must be a number 0..1` |
 
+### Bubble level
+
+| Test | Expected |
+|---|---|
+| board flat on the table | the bubble sits in the centre of its square, at most 1-2 px off |
+| tilt the board slowly to each side | the bubble moves toward the raised side (if an axis goes the wrong way, flip its `BUBBLE_SIGN_*` in `bubble.cpp`) |
+| tilt the board steeply | the bubble stops at the edge and never draws over the square's border |
+| tilt the board while typing commands on the console | the bubble keeps moving, no freeze |
+
 ### Memory
 
 | Test | Expected |
@@ -295,7 +304,6 @@ Tests for the parts not implemented yet, from the spec:
 - **Temperature:** periodic reads every `pmon` s, none when `pmon = 0`; `rt` works even when `pmon = 0`; `rmm`/`cmm` with timestamps; RGB LED blue below `tlow`, red above `thigh`, graded in between; an alarm outside `[tlow, thigh]` when `ALAT = 1`.
 - **Buzzer:** sounds for `tala` s on each alarm; config sound mode (`adcs 1`) changes the PWM period with pot1 and the duty cycle with pot2.
 - **LCD temperature line:** `T(C)= tt.t` shows the last reading.
-- **Bubble level:** the bubble follows the board's tilt on X and Y; `adbl 0`/`1` stops and restarts it.
 - **Hit Bit:** pattern rotating on LED1-4, the joystick centre clears a lit bit or adds one, a win blinks all 4 LEDs 3 times; `adhb 0`/`1`.
 
 
@@ -317,6 +325,7 @@ frtos/              the application, built from txCmdFRTOS
   bubble.cpp/.h       bubble level task (Part 3)
   hitbit.cpp/.h       Hit Bit task (Part 3)
   C12832/             LCD driver library (course code)
+  MMA7660/            accelerometer driver library (course code)
   mbed_app.json       mbed settings (newline conversion)
   freertos-cm3/       FreeRTOS V9.0.0 and FreeRTOSConfig.h
 materials/          spec, FreeRTOS manuals, lab notes and course examples

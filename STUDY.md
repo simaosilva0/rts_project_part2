@@ -16,6 +16,7 @@ The project's technical decisions and the reasons behind them, by topic. Updated
 12. Task priorities and stubs
 13. Turning tasks on and off
 14. Stack overflow detection and memory measurement
+15. Bubble level
 
 ## 1. Build environment
 
@@ -394,3 +395,24 @@ Every task of the system now exists. The parts' tasks are stubs in their own fil
 - **`extern "C"` around the hooks.** C++ mangles function names, encoding the parameter types in the symbol (`vApplicationMallocFailedHook()` becomes something like `_Z28vApplicationMallocFailedHookv`) so that functions can be overloaded. FreeRTOS is C and calls the plain names; without `extern "C"` the link fails with "undefined reference". The built `frtos.elf` shows both hooks under their plain names.
 - **`stk` uses a static `TaskStatus_t` array, not `vTaskList()`.** `vTaskList` allocates a temporary array and frees it; with `heap_1` freeing does nothing, so every call would leak about 350 bytes until the heap ran out. The static array (10 x 36 bytes) is allocated once and stays off the console's stack. Library functions have to be checked against the heap scheme before use.
 - **Sizing procedure (on the board):** run every feature (all commands, alarms, on/off toggles, and later the parts' code), run `stk`, keep a margin of about 25% or at least ~50 words per task for rare paths, then shrink stacks with large margins and grow any close to 0. `free heap` replaces the ~10.2 KB estimate of section 12. The numbers change as the parts are written, so the final sizing is done with all the real code in.
+
+## 15. Bubble level
+
+`bubble.cpp` reads the MMA7660 accelerometer and moves the bubble on the right side of the LCD. The driver library is in `frtos/MMA7660/` (from `materials/MMA7660.zip`, without its `.hg` folder).
+
+### Theory
+
+- **What the sensor measures.** The MMA7660 gives the acceleration on X, Y and Z as 6-bit signed numbers (-32..31), about 21.33 counts per g. At rest the only acceleration is gravity. Flat on the table, X and Y read about 0 and Z about +21 (1 g). Tilted by an angle θ, gravity's component along X is `g·sin θ`, so X ≈ 21·sin θ counts. Near level sin θ ≈ θ, which gives roughly 2.7° per count.
+- **A bubble moves toward the raised side,** opposite to where gravity pulls, so the offset on the LCD is the measured component with its sign flipped.
+- **`vTaskDelay` vs `vTaskDelayUntil`.** `vTaskDelay(100)` waits 100 ms from the end of the iteration, so the real period is 100 ms plus the run time and slowly drifts. `vTaskDelayUntil` wakes at fixed multiples of the period counted from the tick, with no drift. The exact phase matters when sampling for a filter or a control loop. For a display a small drift is invisible, so the simpler call is enough.
+
+### Decisions
+
+- **One transaction for X and Y.** `acc.readData(xyz)` reads registers 0x00-0x02 in one I2C transfer, so X and Y come from the same sample. Calling `x()` and then `y()` could pair an old X with a new Y if the chip updated between the two reads. One transfer also holds the bus for less time, and it returns integer counts, while `x()` returns a `float` in g that we would only convert back.
+- **Only the driver call inside the lock** (rule 1 of section 11). `lcd_show_bubble` comes after `i2c_unlock()`, so the temperature task never waits for the bus because of an LCD message. The driver re-reads if a register's alert bit (bit 6) says it was being updated during the read; in practice that is at most one extra read.
+- **Created active** (`MMA7660 acc(p28, p27, true)`). The chip samples on its own at 64 Hz, faster than our 10 Hz reads, and a read is only the I2C transfer. In standby every read would wake it and busy-wait about 28 ms (`wait(0.012 + 1/samplerate)`) holding the mutex.
+- **A `static` global object.** Only the bubble task uses the accelerometer, so the object is private to `bubble.cpp`. Its constructor writes the MODE register over I2C before `main()`, when no task exists yet, so it needs no lock.
+- **Scale: 1 count = 1 pixel.** The bubble can move ±12 px, which is reached at about 0.56 g (~34°). A level has to show small tilts, and a few degrees already move it. The scale costs no multiplication.
+- **No clamping in the bubble task.** The LCD task clamps the offset to ±12 px (section 9), and that rule lives in one place. `clamp()` uses plain `if` statements with early returns.
+- **The axis signs are `#define`s** (`BUBBLE_SIGN_X`, `BUBBLE_SIGN_Y`). How the chip's axes line up with the LCD depends on how it sits on the Application Board, so the signs are checked on the board and flipped there if the bubble moves the wrong way.
+- **Period 100 ms.** About 10 updates per second already looks smooth. Each update is an LCD message and a redraw, so a faster rate would mostly add work for the LCD task.
