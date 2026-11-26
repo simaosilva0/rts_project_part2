@@ -285,9 +285,12 @@ Flash `frtos.bin`, open the terminal (`picocom -b 115200 --echo /dev/ttyACM0`) a
 | Test | Expected |
 |---|---|
 | board flat on the table | the bubble sits in the centre of its square, at most 1-2 px off |
+| leave the board still for a few seconds | the bubble stays put, no flickering between two positions |
+| tilt the board quickly and hold it | the bubble reaches its new place in about half a second |
 | tilt the board slowly to each side | the bubble moves toward the raised side (if an axis goes the wrong way, flip its `BUBBLE_SIGN_*` in `bubble.cpp`) |
 | tilt the board steeply | the bubble stops at the edge and never draws over the square's border |
 | tilt the board while typing commands on the console | the bubble keeps moving, no freeze |
+| `adbl 0`, tilt the board, `adbl 1` | the bubble comes back directly at the new tilt, without sliding from the old place |
 
 ### Memory
 

@@ -15,11 +15,12 @@ BaseType_t lcd_init(void);          /* call once in main(), before the scheduler
 void vLcdTask(void *pvParameters);  /* the only code that touches the LCD */
 
 /* Ask the LCD task to show something. They never block: if the LCD
-   queue is full the update is dropped (the next one replaces it). */
+   queue is full the update is dropped (the next one replaces it).
+   The bubble functions return pdFAIL when that happens. */
 void lcd_show_clock(int h, int m, int s);
 void lcd_show_alarms(int clock_on, int temp_on);
 void lcd_show_temp(int tenths);         /* temperature in tenths of C, e.g. 235 = 23.5 */
-void lcd_show_bubble(int dx, int dy);   /* offset from the centre, px */
-void lcd_hide_bubble(void);             /* clear the bubble area (adbl 0) */
+BaseType_t lcd_show_bubble(int dx, int dy);    /* offset from the centre, px */
+BaseType_t lcd_hide_bubble(void);              /* clear the bubble area (adbl 0) */
 
 #endif

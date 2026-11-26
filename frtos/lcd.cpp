@@ -32,9 +32,9 @@ BaseType_t lcd_init(void)
 /*-------------------------------------------------------------------------+
 | Sending side: called by other tasks
 +--------------------------------------------------------------------------*/
-static void send(const lcd_msg_t *msg)
+static BaseType_t send(const lcd_msg_t *msg)
 {
-    xQueueSend(lcd_queue, msg, 0);      /* full: drop, never block the caller */
+    return xQueueSend(lcd_queue, msg, 0);   /* full: drop, never block the caller */
 }
 
 void lcd_show_clock(int h, int m, int s)
@@ -64,20 +64,20 @@ void lcd_show_temp(int tenths)
     send(&msg);
 }
 
-void lcd_show_bubble(int dx, int dy)
+BaseType_t lcd_show_bubble(int dx, int dy)
 {
     lcd_msg_t msg;
     msg.type = MSG_BUBBLE;
     msg.bubble.dx = dx;
     msg.bubble.dy = dy;
-    send(&msg);
+    return send(&msg);
 }
 
-void lcd_hide_bubble(void)
+BaseType_t lcd_hide_bubble(void)
 {
     lcd_msg_t msg;
     msg.type = MSG_BUBBLE_OFF;
-    send(&msg);
+    return send(&msg);
 }
 
 /*-------------------------------------------------------------------------+
